@@ -1,0 +1,31 @@
+services:
+  abnehm-app:
+    build: .
+    container_name: abnehm-app
+    restart: unless-stopped
+    ports:
+      - "7854:8000"
+    volumes:
+      - ./data:/data
+      # Netzlaufwerk (NFS) für die nächtlichen Backups. Der Elternordner wird mit "rslave" eingebunden,
+      # damit ein später (neu) gemountetes NFS-Laufwerk auch im laufenden Container sichtbar wird.
+      - type: bind
+        source: /mnt/abnehm-app
+        target: /mnt/abnehm-app
+        bind:
+          propagation: rslave
+    environment:
+      # Nach dem Anlegen aller Konten auf "false" setzen, damit sich niemand Fremdes registriert
+      ALLOW_REGISTRATION: "true"
+      # true, sobald die App hinter HTTPS (Reverse Proxy) läuft
+      COOKIE_SECURE: "false"
+      # Kostenloser Key: https://fdc.nal.usda.gov/api-key-signup  (DEMO_KEY = stark limitiert, leer = USDA aus)
+      FDC_API_KEY: "DEMO_KEY"
+      OFF_COUNTRY: "de"
+      TZ: "Europe/Berlin"
+      BACKUP_DIR: "/mnt/abnehm-app/backup"
+      # Uhrzeit der nächtlichen Sicherung (leer = aus) und wie lange Backups aufbewahrt werden
+      BACKUP_TIME: "03:00"
+      BACKUP_KEEP_DAYS: "30"
+      # Kontaktadresse für die Push-Dienste (Apple/Google), Pflichtangabe für Push-Nachrichten
+      VAPID_SUBJECT: "mailto:abnehm-app@example.org"

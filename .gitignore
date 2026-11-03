@@ -1,0 +1,8 @@
+# Laufzeitdaten (Datenbank, Push-Schlüssel) – gehören ins Backup, nicht ins Repository
+data/
+*.db
+*.db-wal
+*.db-shm
+*.pem
+__pycache__/
+*.pyc

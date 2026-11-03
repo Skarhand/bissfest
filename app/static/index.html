@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f5f4">
+  <script>
+    // Gewählte Darstellung vor dem ersten Zeichnen setzen (kein Aufblitzen im falschen Modus)
+    try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Bissfest">
+  <title>Bissfest</title>
+  <meta name="description" content="Bissfest – mit Biss zum Wunschgewicht. Mahlzeiten, Kalorien, Wasser und Gewicht im Blick.">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- Anmeldung -->
+<section id="auth" class="screen hidden">
+  <div class="auth-box">
+    <img src="/static/icon.svg" alt="" class="auth-logo">
+    <h1>Bissfest</h1>
+    <p class="slogan">Mit Biss zum Wunschgewicht.</p>
+    <p class="muted tiny tagline">Abnehmen klappt nicht mit Verzicht, sondern mit Dranbleiben. Bissfest zählt deine
+      Mahlzeiten, Kalorien, Wasser und dein Gewicht – damit du Tag für Tag dranbleibst.</p>
+    <form id="auth-form" autocomplete="on">
+      <input id="auth-user" name="username" placeholder="Benutzername" autocomplete="username" autocapitalize="none" required minlength="3">
+      <input id="auth-pass" name="password" type="password" placeholder="Passwort (min. 8 Zeichen)" autocomplete="current-password" required minlength="8">
+      <button type="submit" class="btn primary" id="auth-submit">Anmelden</button>
+    </form>
+    <p class="err" id="auth-err"></p>
+    <button class="link" id="auth-toggle">Noch kein Konto? Registrieren</button>
+  </div>
+</section>
+
+<!-- App -->
+<section id="app" class="screen hidden">
+  <header class="topbar">
+    <button class="icon-btn" id="day-prev" aria-label="Vortag">‹</button>
+    <button class="day-label" id="day-label">Heute</button>
+    <button class="icon-btn" id="day-next" aria-label="Folgetag">›</button>
+    <input type="date" id="day-picker" class="visually-hidden">
+  </header>
+
+  <main id="view-today" class="view">
+    <div class="card summary">
+      <div class="ring-wrap">
+        <svg viewBox="0 0 120 120" class="ring">
+          <circle cx="60" cy="60" r="52" class="ring-bg"/>
+          <circle cx="60" cy="60" r="52" class="ring-fg" id="kcal-ring"/>
+        </svg>
+        <div class="ring-text"><strong id="kcal-left">0</strong><span id="kcal-left-label">übrig</span></div>
+      </div>
+      <div class="summary-stats">
+        <div><span class="muted">Gegessen</span><strong id="kcal-eaten">0</strong></div>
+        <div><span class="muted">Ziel</span><strong id="kcal-goal">0</strong></div>
+        <div class="hidden" id="deficit-row"><span class="muted">Defizit</span><strong id="kcal-deficit">0</strong></div>
+        <div class="macros" id="macros"></div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="card water">
+        <div class="card-head"><h2>💧 Wasser</h2><span id="water-text" class="muted"></span></div>
+        <div class="bar"><div id="water-bar"></div></div>
+        <div class="btn-row">
+          <button class="btn small" data-water="-250">−</button>
+          <button class="btn small" data-water="250">+250</button>
+          <button class="btn small" data-water="500">+500</button>
+        </div>
+      </div>
+      <div class="card weight">
+        <div class="card-head"><h2>⚖️ Gewicht</h2><span id="weight-diff" class="muted"></span></div>
+        <form id="weight-form" class="weight-form">
+          <input id="weight-input" type="number" inputmode="decimal" step="0.1" min="20" max="400" placeholder="kg">
+          <button class="btn small primary">OK</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="meals"></div>
+    <p class="version" id="app-version"></p>
+  </main>
+
+  <main id="view-history" class="view hidden">
+    <div class="card">
+      <div class="card-head"><h2>Gewichtsverlauf</h2>
+        <select id="hist-range"><option value="30">30 Tage</option><option value="90">90 Tage</option><option value="365">1 Jahr</option></select>
+      </div>
+      <div id="weight-chart" class="chart"></div>
+      <div id="weight-stats" class="stats-grid"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Kalorien pro Tag</h2></div>
+      <div id="kcal-chart" class="chart"></div>
+      <div id="kcal-stats" class="stats-grid"></div>
+      <div id="deficit-stats" class="stats-grid"></div>
+      <p class="muted tiny" id="deficit-hint"></p>
+    </div>
+  </main>
+
+  <main id="view-settings" class="view hidden">
+    <div class="card form">
+      <h2>🌓 Darstellung</h2>
+      <div class="seg" id="theme-switch" role="radiogroup" aria-label="Darstellung">
+        <button type="button" role="radio" data-theme-choice="light">☀️ Hell</button>
+        <button type="button" role="radio" data-theme-choice="dark">🌙 Dunkel</button>
+        <button type="button" role="radio" data-theme-choice="system">⚙️ System</button>
+      </div>
+      <p class="muted tiny">„System“ folgt automatisch der Einstellung deines Handys. Gilt für dieses Gerät.</p>
+    </div>
+    <button type="button" class="card menu-item" id="open-body">
+      <span class="mi-icon">🧮</span>
+      <span class="mi-text"><strong>Körperdaten &amp; Kaloriendefizit</strong><span class="muted tiny" id="body-summary"></span></span>
+      <span class="chev">›</span>
+    </button>
+    <form class="card form" id="settings-form">
+      <h2>Ziele</h2>
+      <label>Kalorienziel pro Tag (kcal)<input type="number" id="s-kcal" min="800" max="6000" required></label>
+      <label>Wasserziel pro Tag (ml)<input type="number" id="s-water" min="500" max="8000" step="50" required></label>
+      <label>Zielgewicht (kg, optional)<input type="number" id="s-target" min="30" max="400" step="0.1" inputmode="decimal"></label>
+      <h2>Mahlzeiten</h2>
+      <label>Mahlzeiten pro Tag
+        <select id="s-meals"><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select>
+      </label>
+      <p class="muted tiny">Bei 3 Mahlzeiten: Frühstück, Mittagessen, Abendessen – jede weitere ist ein Snack.
+        Die Uhrzeit ist deine Push-Erinnerung (leer = keine). Sie kommt nur, wenn für die Mahlzeit noch nichts eingetragen ist.</p>
+      <div id="s-meal-names"></div>
+      <button class="btn primary">Speichern</button>
+      <p class="ok" id="settings-msg"></p>
+    </form>
+    <div class="card form" id="push-card">
+      <h2>🔔 Erinnerungen</h2>
+      <p class="muted tiny" id="push-status"></p>
+      <button type="button" class="btn primary hidden" id="push-enable">Auf diesem Gerät aktivieren</button>
+      <button type="button" class="btn hidden" id="push-test">Test-Nachricht senden</button>
+      <button type="button" class="btn danger hidden" id="push-disable">Auf diesem Gerät deaktivieren</button>
+    </div>
+    <form class="card form" id="pw-form">
+      <h2>Passwort ändern</h2>
+      <input type="password" id="pw-old" placeholder="Aktuelles Passwort" autocomplete="current-password" required>
+      <input type="password" id="pw-new" placeholder="Neues Passwort (min. 8)" autocomplete="new-password" minlength="8" required>
+      <button class="btn">Ändern</button>
+      <p class="ok" id="pw-msg"></p>
+    </form>
+    <div class="card">
+      <p class="muted">Angemeldet als <strong id="s-user"></strong></p>
+      <button class="btn danger" id="logout">Abmelden</button>
+      <p class="muted tiny">Nährwerte: Open Food Facts (ODbL) und USDA FoodData Central.</p>
+      <p class="muted tiny" id="settings-version"></p>
+    </div>
+  </main>
+
+  <main id="view-body" class="view hidden">
+    <button type="button" class="back-link" id="body-back">‹ Einstellungen</button>
+    <form class="card form" id="body-form">
+      <h2>Körperdaten &amp; Kaloriendefizit</h2>
+      <div class="row2">
+        <label>Geschlecht
+          <select id="s-sex"><option value="">–</option><option value="w">weiblich</option><option value="m">männlich</option></select>
+        </label>
+        <label>Geburtsjahr<input type="number" id="s-birth" inputmode="numeric" min="1920" max="2015" placeholder="z. B. 1985"></label>
+      </div>
+      <div class="row2">
+        <label>Größe (cm)<input type="number" id="s-height" inputmode="numeric" min="120" max="230" placeholder="z. B. 178"></label>
+        <label>Gewicht (kg)<input type="text" id="s-weight" disabled placeholder="unter „Tag“ eintragen"></label>
+      </div>
+      <label>Aktivität im Alltag
+        <select id="s-activity">
+          <option value="">–</option>
+          <option value="1.2">Kaum aktiv (Bürojob, wenig Bewegung)</option>
+          <option value="1.375">Leicht aktiv (1–3× Sport pro Woche)</option>
+          <option value="1.55">Mäßig aktiv (3–5× Sport pro Woche)</option>
+          <option value="1.725">Sehr aktiv (6–7× Sport pro Woche)</option>
+          <option value="1.9">Extrem aktiv (körperliche Arbeit + Sport)</option>
+        </select>
+      </label>
+      <label>Abnehmtempo
+        <select id="s-pace">
+          <option value="0">Gewicht halten</option>
+          <option value="0.25">0,25 kg pro Woche (sanft)</option>
+          <option value="0.5" selected>0,5 kg pro Woche (empfohlen)</option>
+          <option value="0.75">0,75 kg pro Woche (zügig)</option>
+          <option value="1">1 kg pro Woche (sehr ambitioniert)</option>
+        </select>
+      </label>
+      <div class="calc" id="calc-result"></div>
+      <button class="btn primary">Speichern</button>
+      <p class="ok" id="body-msg"></p>
+    </form>
+    <div class="card">
+      <h2>So wird gerechnet</h2>
+      <p class="muted tiny">Grundumsatz nach Mifflin-St Jeor (Gewicht, Größe, Alter, Geschlecht) × Aktivitätsfaktor = Gesamtumsatz.
+        Davon wird das Defizit für dein Abnehmtempo abgezogen (1 kg Körperfett ≈ 7.700 kcal). Zur Sicherheit liegt das Ziel
+        höchstens 25 % unter dem Gesamtumsatz und nicht unter 1.200 kcal (Frauen) bzw. 1.500 kcal (Männer).</p>
+    </div>
+  </main>
+
+  <nav class="tabbar">
+    <button data-view="today" class="active"><span>🍽️</span>Tag</button>
+    <button data-view="history"><span>📈</span>Verlauf</button>
+    <button data-view="settings"><span>⚙️</span>Einstellungen</button>
+  </nav>
+</section>
+
+<!-- Lebensmittel hinzufügen -->
+<div id="sheet" class="sheet hidden" role="dialog" aria-modal="true">
+  <div class="sheet-panel">
+    <div class="sheet-head">
+      <h2 id="sheet-title">Hinzufügen</h2>
+      <button class="icon-btn" id="sheet-close" aria-label="Schließen">✕</button>
+    </div>
+    <div class="seg" id="sheet-tabs">
+      <button data-tab="search" class="active">Suche</button>
+      <button data-tab="recent">Zuletzt</button>
+      <button data-tab="templates">Gerichte</button>
+      <button data-tab="barcode">Barcode</button>
+      <button data-tab="manual">Neu</button>
+    </div>
+
+    <div class="tab" id="tab-search">
+      <form id="search-form" class="search-row">
+        <input id="search-q" type="search" placeholder="z. B. Haferflocken, Banane, Joghurt" enterkeyhint="search">
+        <button class="btn primary">Suchen</button>
+      </form>
+      <p class="muted tiny" id="search-info"></p>
+      <ul class="results" id="search-results"></ul>
+    </div>
+    <div class="tab hidden" id="tab-recent">
+      <ul class="results" id="recent-results"></ul>
+    </div>
+    <div class="tab hidden" id="tab-barcode">
+      <button type="button" class="btn primary scan-big" id="barcode-scan">📷 Barcode scannen</button>
+      <p class="muted tiny center">oder die Nummer unter dem Barcode eintippen:</p>
+      <form id="barcode-form" class="search-row">
+        <input id="barcode-q" inputmode="numeric" pattern="\d{6,14}" placeholder="EAN / Barcode-Nummer">
+        <button class="btn">Suchen</button>
+      </form>
+      <p class="muted tiny" id="barcode-info"></p>
+    </div>
+    <div class="tab hidden" id="tab-templates">
+      <p class="muted tiny">Gerichte sind Mahlzeiten, die du immer wieder isst – z. B. dein Müsli. Trag die Zutaten einmal
+        ein und tippe dann in der Tagesansicht bei der Mahlzeit auf „⭐ Als Gericht speichern“.</p>
+      <ul class="results" id="template-results"></ul>
+    </div>
+    <div class="tab hidden" id="tab-template">
+      <div class="picked">
+        <strong id="t-name"></strong>
+        <span class="muted tiny" id="t-meta"></span>
+      </div>
+      <ul class="results small" id="t-items"></ul>
+      <label>Portion</label>
+      <div class="chips" id="t-factors"></div>
+      <label>Mahlzeit<select id="t-meal"></select></label>
+      <div class="kcal-preview"><strong id="t-kcal">0</strong> kcal</div>
+      <button type="button" class="btn primary" id="t-apply">Gericht eintragen</button>
+      <button type="button" class="btn danger" id="t-delete">Gericht löschen</button>
+      <button type="button" class="link" id="t-back">‹ Zurück zu den Gerichten</button>
+    </div>
+    <form class="tab form hidden" id="tab-manual">
+      <p class="muted tiny">Neue Lebensmittel landen in der gemeinsamen Bissfest-Datenbank – alle Nutzer finden sie danach in der Suche.</p>
+      <label>Bezeichnung *<input id="m-name" placeholder="z. B. Kernige Haferflocken" required maxlength="120"></label>
+      <div class="row2">
+        <label>Hersteller<input id="m-manufacturer" placeholder="z. B. Kölln" maxlength="120"></label>
+        <label>Marke<input id="m-brand" placeholder="z. B. Blütenzarte" maxlength="120"></label>
+      </div>
+      <label>Barcode (optional)
+        <span class="search-row">
+          <input id="m-code" inputmode="numeric" pattern="\d{6,14}" placeholder="EAN von der Verpackung">
+          <button type="button" class="btn" id="m-code-scan" aria-label="Barcode scannen">📷</button>
+        </span>
+      </label>
+      <h2>Nährwerte pro 100 g</h2>
+      <label>Brennwert (kcal) *<input id="m-kcal" type="number" inputmode="decimal" step="0.1" min="0" max="1000" required></label>
+      <div class="row2">
+        <label>Eiweiß (g)<input id="m-protein" type="number" inputmode="decimal" step="0.1" min="0" max="100"></label>
+        <label>Fett (g)<input id="m-fat" type="number" inputmode="decimal" step="0.1" min="0" max="100"></label>
+      </div>
+      <div class="row2">
+        <label>Kohlenhydrate (g)<input id="m-carbs" type="number" inputmode="decimal" step="0.1" min="0" max="100"></label>
+        <label>davon Zucker (g)<input id="m-sugar" type="number" inputmode="decimal" step="0.1" min="0" max="100"></label>
+      </div>
+      <button class="btn primary">Speichern &amp; eintragen</button>
+      <p class="err" id="m-err"></p>
+    </form>
+
+    <!-- Menge -->
+    <form class="tab form hidden" id="tab-amount">
+      <div class="picked">
+        <strong id="a-name"></strong>
+        <span class="muted tiny" id="a-meta"></span>
+      </div>
+      <label>Menge (g / ml)
+        <input id="a-grams" type="number" inputmode="decimal" step="1" min="1" max="5000" required>
+      </label>
+      <div class="chips" id="a-chips"></div>
+      <label>Mahlzeit<select id="a-meal"></select></label>
+      <div class="kcal-preview"><strong id="a-kcal">0</strong> kcal</div>
+      <button class="btn primary" id="a-save">Eintragen</button>
+      <button type="button" class="btn danger hidden" id="a-delete">Eintrag löschen</button>
+      <button type="button" class="btn danger hidden" id="a-delete-custom">Aus der Bissfest-Datenbank löschen</button>
+      <button type="button" class="link" id="a-back">‹ Zurück zur Auswahl</button>
+    </form>
+  </div>
+</div>
+
+<!-- Barcode-Scanner (Vollbild) -->
+<div id="scanner" class="scanner hidden" role="dialog" aria-label="Barcode-Scanner">
+  <video id="scanner-video" playsinline muted autoplay></video>
+  <div class="scanner-frame"><div class="scanner-line"></div></div>
+  <p class="scanner-hint" id="scanner-hint"></p>
+  <div class="scanner-actions">
+    <button type="button" class="btn hidden" id="scanner-torch">🔦 Licht</button>
+    <button type="button" class="btn" id="scanner-cancel">Abbrechen</button>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
