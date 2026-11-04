@@ -99,6 +99,7 @@ async function initAuth() {
     $("#auth-version").textContent = `Version ${cfg.version} · `;
   }
   if (!cfg.allow_registration) $("#auth-toggle").classList.add("hidden");
+  $("#auth-full").classList.toggle("hidden", !cfg.registration_full);
   if (cfg.source_url) {
     $("#source-link a").href = cfg.source_url;
     $("#source-link").classList.remove("hidden");
@@ -171,6 +172,44 @@ async function initAuth() {
     } catch (err) { $("#auth-err").textContent = err.message; }
   };
   // Rückkehr vom Bestätigungslink (/verify leitet auf /?verified=1 bzw. 0 um)
+  const emailChanged = new URLSearchParams(location.search).get("email_changed");
+  if (emailChanged !== null) {
+    history.replaceState(null, "", "/");
+    setTimeout(() => toast(emailChanged === "1" ? "✅ Neue E-Mail-Adresse bestätigt" : "⚠️ Link ungültig oder abgelaufen – bitte erneut anfordern"), 600);
+  }
+  // Passwort vergessen
+  $("#auth-forgot").classList.toggle("hidden", !cfg.mail_enabled);
+  $("#auth-forgot").onclick = () => {
+    hideNotice();
+    $("#auth-err").textContent = "";
+    $("#auth-forgot-id").value = $("#auth-user").value.trim();
+    $("#auth-forgot-form").classList.toggle("hidden");
+  };
+  $("#auth-forgot-form").onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api("/password-reset/request", { method: "POST", body: { identifier: $("#auth-forgot-id").value.trim() } });
+      $("#auth-forgot-form").classList.add("hidden");
+      showNotice("📬 Schau in dein Postfach", "Falls es dieses Konto gibt, ist jetzt eine Mail mit einem Link unterwegs. Der Link gilt 1 Stunde. Schau auch im Spam-Ordner nach.", false);
+    } catch (err) { $("#auth-err").textContent = err.message; }
+  };
+  $("#auth-reset-form").onsubmit = async (e) => {
+    e.preventDefault();
+    $("#auth-err").textContent = "";
+    if ($("#auth-reset-pass").value !== $("#auth-reset-pass2").value) {
+      $("#auth-err").textContent = "Die beiden Passwörter stimmen nicht überein.";
+      return;
+    }
+    try {
+      await api("/password-reset/confirm", { method: "POST", body: { token: state.resetToken, password: $("#auth-reset-pass").value } });
+      state.resetToken = null;
+      $("#auth-reset-form").reset();
+      $("#auth-reset-form").classList.add("hidden");
+      $("#auth-form").classList.remove("hidden");
+      await startApp();
+      toast("✅ Neues Passwort gespeichert");
+    } catch (err) { $("#auth-err").textContent = err.message; }
+  };
   const verified = new URLSearchParams(location.search).get("verified");
   if (verified !== null) {
     history.replaceState(null, "", "/");
@@ -981,6 +1020,7 @@ const MEAL_NAMES = ["Frühstück", "Mittagessen", "Abendessen", "Snack 1", "Snac
 function fillSettings() {
   const u = state.user;
   $("#s-user").textContent = u.username;
+  $("#email-current").textContent = u.email || "keine hinterlegt";
   $("#admin-link").classList.toggle("hidden", !u.is_admin);
   $("#s-kcal").value = u.kcal_goal;
   $("#s-water").value = u.water_goal_ml;
@@ -1087,6 +1127,15 @@ function initSettings() {
   $("#body-form").onsubmit = (e) => { e.preventDefault(); saveSettings("#body-msg"); };
   $("#open-body").onclick = () => showView("body");
   $("#body-back").onclick = () => showView("settings");
+  $("#email-form").onsubmit = async (e) => {
+    e.preventDefault();
+    $("#email-msg").textContent = "";
+    try {
+      const r = await api("/email-change", { method: "POST", body: { email: $("#email-new").value.trim(), password: $("#email-pw").value } });
+      $("#email-msg").textContent = `Link an ${r.email} verschickt – bitte dort bestätigen.`;
+      e.target.reset();
+    } catch (err) { $("#email-msg").textContent = err.message; }
+  };
   $("#pw-form").onsubmit = async (e) => {
     e.preventDefault();
     try {
@@ -1525,5 +1574,15 @@ function initNav() {
   initHomeAssistant();
   initNav();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  // Link aus der Passwort-Mail: Token sofort aus der Adresszeile nehmen, dann neues Passwort abfragen
+  const resetToken = new URLSearchParams(location.search).get("reset");
+  if (resetToken) {
+    history.replaceState(null, "", "/");
+    state.resetToken = resetToken;
+    showAuth();
+    $("#auth-form").classList.add("hidden");
+    $("#auth-reset-form").classList.remove("hidden");
+    return;
+  }
   try { await startApp(); } catch { showAuth(); }
 })();

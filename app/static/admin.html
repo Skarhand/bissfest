@@ -82,6 +82,13 @@
         <span><strong>Neue Konten zulassen</strong><br><span class="muted tiny" id="reg-hint"></span></span>
         <input type="checkbox" id="reg-switch" role="switch">
       </label>
+      <form class="search-row" id="max-users-form">
+        <label class="grow">Maximale Anzahl Konten (0 = unbegrenzt)
+          <input type="number" id="max-users" min="0" max="100000" inputmode="numeric" required>
+        </label>
+        <button class="btn">Speichern</button>
+      </form>
+      <p class="muted tiny" id="users-usage"></p>
     </div>
     <div class="card">
       <h2>Status</h2>

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -28,6 +28,8 @@ import push
 
 DB_PATH = os.environ.get("DB_PATH", "/data/abnehm.db")
 ALLOW_REGISTRATION = os.environ.get("ALLOW_REGISTRATION", "true").lower() == "true"
+# Höchstzahl an Konten (0 = unbegrenzt); im Admin-Dashboard zur Laufzeit änderbar
+MAX_USERS_DEFAULT = int(os.environ.get("MAX_USERS", "0"))
 # Admins für /admin (Benutzernamen, kommagetrennt) – bewusst nur per Konfiguration, nicht über die Oberfläche
 ADMIN_USERS = {n.strip().lower() for n in os.environ.get("ADMIN_USERS", "").split(",") if n.strip()}
 FDC_API_KEY = os.environ.get("FDC_API_KEY", "DEMO_KEY")  # USDA FoodData Central, leer = aus
@@ -36,6 +38,7 @@ COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 # Öffentliche Adresse für Links in E-Mails (leer = aus der Anfrage ermitteln)
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 VERIFY_HOURS = 24
+RESET_HOURS = 1
 # "Spendier mir einen Kaffee": Wero-Bezahllink (leer = Karte ausgeblendet)
 DONATE_WERO_URL = "https://share.wero-wallet.eu/p/1/c/0iOnTczDCg"  # fest vorgegeben, siehe NOTICE.md
 # Android-App (Trusted Web Activity): Paketname + SHA-256 des Signaturzertifikats für assetlinks.json,
@@ -56,7 +59,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.7.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -294,6 +297,8 @@ def init_db():
                 conn.executemany("INSERT INTO coffee_entries (user_id, day, ml, created) VALUES (?,?,?,?)",
                                  [(r["user_id"], r["day"], COFFEE_SIZES["cup"], 0)] * r["cups"])
             conn.execute("DROP TABLE coffee")
+        if "payload" not in {r["name"] for r in conn.execute("PRAGMA table_info(email_tokens)")}:
+            conn.execute("ALTER TABLE email_tokens ADD COLUMN payload TEXT")
         have = {r["name"] for r in conn.execute("PRAGMA table_info(feedback)")}
         for col, typ in (("kind", "TEXT NOT NULL DEFAULT 'feature'"), ("meta", "TEXT"), ("attachment", "TEXT"),
                          ("status", "TEXT NOT NULL DEFAULT 'offen'")):
@@ -403,9 +408,25 @@ def get_setting(key: str, default: str) -> str:
     return row["value"] if row else default
 
 
+def max_users() -> int:
+    return int(get_setting("max_users", str(MAX_USERS_DEFAULT)))
+
+
+def user_count() -> int:
+    with db() as conn:
+        return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+
+def registration_full() -> bool:
+    """Alle Plätze belegt? Unbestätigte Konten zählen mit, sie werden nach UNVERIFIED_KEEP_DAYS Tagen gelöscht."""
+    limit = max_users()
+    return limit > 0 and user_count() >= limit
+
+
 def registration_open() -> bool:
-    """Registrierung: per Konfiguration erlaubt, im Admin-Dashboard nicht gesperrt und Mailversand eingerichtet."""
-    return ALLOW_REGISTRATION and get_setting("registration_open", "1") == "1" and mailer.configured()
+    """Registrierung: per Konfiguration erlaubt, im Admin-Dashboard nicht gesperrt, Mailversand eingerichtet, Platz frei."""
+    return (ALLOW_REGISTRATION and get_setting("registration_open", "1") == "1" and mailer.configured()
+            and not registration_full())
 
 
 def is_admin(u: sqlite3.Row) -> bool:
@@ -414,7 +435,8 @@ def is_admin(u: sqlite3.Row) -> bool:
 
 @app.get("/api/config")
 def config():
-    return {"allow_registration": registration_open(), "version": APP_VERSION,
+    return {"allow_registration": registration_open(), "registration_full": registration_full(),
+            "version": APP_VERSION, "mail_enabled": mailer.configured(),
             "donate_wero": DONATE_WERO_URL, "source_url": SOURCE_URL,
             # eigene APK im Datenordner, sonst die offizielle (fragt beim ersten Start nach dem Server)
             "android_apk_url": "/download/bissfest.apk" if APK_PATH.exists() else OFFICIAL_APK_URL}
@@ -475,6 +497,9 @@ def register(creds: RegisterIn, request: Request):
     salt = secrets.token_hex(16)
     with db() as conn:
         cleanup_unverified(conn)
+    if registration_full():
+        raise HTTPException(403, "Auf diesem Server sind alle Plätze belegt")
+    with db() as conn:
         if conn.execute("SELECT 1 FROM users WHERE username=?", (creds.username,)).fetchone():
             raise HTTPException(409, "Benutzername ist bereits vergeben")
         if conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
@@ -637,6 +662,150 @@ def dismiss_goal_hint(u=Depends(current_user)):
     with db() as conn:
         conn.execute("UPDATE users SET goal_hint_dismissed=1 WHERE id=?", (u["id"],))
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- Passwort vergessen / E-Mail ändern
+
+def new_mail_token(user_id: int, purpose: str, hours: int, payload: str | None = None) -> str:
+    """Einmal-Token für Mail-Links; ein neuer Token ersetzt ältere gleichen Zwecks, gespeichert wird nur der Hash."""
+    token = secrets.token_urlsafe(32)
+    with db() as conn:
+        conn.execute("DELETE FROM email_tokens WHERE user_id=? AND purpose=?", (user_id, purpose))
+        conn.execute("INSERT INTO email_tokens (token_hash, user_id, purpose, expires, payload) VALUES (?,?,?,?,?)",
+                     (hashlib.sha256(token.encode()).hexdigest(), user_id, purpose,
+                      int(time.time()) + hours * 3600, payload))
+    return token
+
+
+def take_mail_token(token: str, purpose: str) -> sqlite3.Row | None:
+    """Gültigen Token einlösen (danach ist er verbraucht)."""
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    with db() as conn:
+        row = conn.execute("SELECT * FROM email_tokens WHERE token_hash=? AND purpose=? AND expires > ?",
+                           (digest, purpose, int(time.time()))).fetchone()
+        if row:
+            conn.execute("DELETE FROM email_tokens WHERE token_hash=?", (digest,))
+    return row
+
+
+def mail_html(base: str, paragraphs: list[str], button: str | None = None, link: str | None = None,
+              small: str = "") -> str:
+    """Einheitliches Mail-Layout; Texte werden hier nicht escaped, nur eigene Inhalte übergeben."""
+    body = "".join(f"<p>{p}</p>" for p in paragraphs)
+    cta = (f'''<p style="text-align:center;margin:28px 0"><a href="{link}" style="background:#2e8b5f;color:#fff;
+        padding:14px 24px;border-radius:12px;text-decoration:none;font-weight:600">{button}</a></p>''' if link else "")
+    return (f'''<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:auto;color:#17201b">
+  <img src="{base}/static/logo.png" alt="Bissfest" width="160" style="display:block;margin:0 auto 16px;border-radius:16px">
+  {body}{cta}<p style="font-size:13px;color:#66736b">{small}</p></div>''')
+
+
+def send_quietly(to: str, subject: str, text: str, html: str):
+    """Für Hintergrund-Aufgaben: Fehler nur loggen (die Antwort an den Nutzer ist schon raus)."""
+    try:
+        mailer.send(to, subject, text, html)
+    except Exception as e:
+        logging.getLogger("mail").error("Mail an %s fehlgeschlagen: %s", to, e)
+
+
+class ResetRequest(BaseModel):
+    identifier: str = Field(min_length=3, max_length=200)  # Benutzername oder E-Mail-Adresse
+
+
+@app.post("/api/password-reset/request")
+def password_reset_request(r: ResetRequest, request: Request, tasks: BackgroundTasks):
+    """Antwortet immer gleich und verschickt im Hintergrund – so lässt sich nicht herausfinden, wer ein Konto hat."""
+    throttle("pwreset-ip:" + (request.client.host if request.client else "?"), limit=10, window=3600)
+    ident = r.identifier.strip()
+    with db() as conn:
+        u = conn.execute("SELECT * FROM users WHERE username = ? OR email = ?", (ident, ident.lower())).fetchone()
+    if u and u["email"] and mailer.configured():
+        try:
+            throttle(f"pwreset-user:{u['id']}", limit=3, window=3600)
+        except HTTPException:
+            return {"ok": True}
+        base = public_base(request)
+        link = f"{base}/?reset={new_mail_token(u['id'], 'reset', RESET_HOURS)}"
+        small = (f"Der Link ist {RESET_HOURS} Stunde gültig und nur einmal nutzbar. Wenn du das nicht warst, "
+                 f"kannst du diese Mail ignorieren – dein Passwort bleibt unverändert.")
+        tasks.add_task(send_quietly, u["email"], "Bissfest: Passwort zurücksetzen",
+                       f"Hallo {u['username']},\n\nüber diesen Link kannst du ein neues Passwort für Bissfest festlegen:\n"
+                       f"{link}\n\n{small}\n",
+                       mail_html(base, [f"Hallo {u['username']},", "du kannst jetzt ein neues Passwort für Bissfest festlegen:"],
+                                 "Neues Passwort festlegen", link, small))
+    return {"ok": True}
+
+
+class ResetConfirm(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    password: str = Field(min_length=8, max_length=200)
+
+
+@app.post("/api/password-reset/confirm")
+def password_reset_confirm(c: ResetConfirm, response: Response):
+    row = take_mail_token(c.token, "reset")
+    if not row:
+        raise HTTPException(400, "Der Link ist abgelaufen oder wurde schon benutzt. Bitte fordere einen neuen an.")
+    salt = secrets.token_hex(16)
+    with db() as conn:
+        # Wer die Mail bekommt, hat die Adresse damit auch bestätigt; alle bisherigen Anmeldungen enden
+        conn.execute("UPDATE users SET pw_hash=?, salt=?, email_verified=1 WHERE id=?",
+                     (hash_pw(c.password, salt), salt, row["user_id"]))
+        conn.execute("DELETE FROM sessions WHERE user_id=?", (row["user_id"],))
+    start_session(response, row["user_id"])
+    return {"ok": True}
+
+
+class EmailChange(BaseModel):
+    email: str = Field(max_length=200, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    password: str = Field(min_length=1, max_length=200)
+
+
+@app.post("/api/email-change")
+def email_change(c: EmailChange, request: Request, u=Depends(current_user)):
+    """Neue Adresse gilt erst nach Klick auf den Link, der an sie geschickt wird."""
+    throttle(f"emailchange:{u['id']}", limit=5, window=3600)
+    if not hmac.compare_digest(u["pw_hash"], hash_pw(c.password, u["salt"])):
+        raise HTTPException(400, "Das Passwort ist falsch")
+    if not mailer.configured():
+        raise HTTPException(503, "Der E-Mail-Versand ist auf diesem Server nicht eingerichtet")
+    email = c.email.strip().lower()
+    if email == (u["email"] or ""):
+        raise HTTPException(400, "Das ist bereits deine E-Mail-Adresse")
+    with db() as conn:
+        if conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
+            raise HTTPException(409, "Für diese E-Mail-Adresse gibt es schon ein Konto")
+    base = public_base(request)
+    link = f"{base}/verify-email-change?token={new_mail_token(u['id'], 'email', VERIFY_HOURS, email)}"
+    small = (f"Der Link ist {VERIFY_HOURS} Stunden gültig. Wenn du das nicht warst, kannst du diese Mail ignorieren.")
+    try:
+        mailer.send(email, "Bissfest: Neue E-Mail-Adresse bestätigen",
+                    f"Hallo {u['username']},\n\nbitte bestätige deine neue E-Mail-Adresse für Bissfest:\n{link}\n\n{small}\n",
+                    mail_html(base, [f"Hallo {u['username']},", "bitte bestätige deine neue E-Mail-Adresse für Bissfest:"],
+                              "Neue Adresse bestätigen", link, small))
+    except Exception as e:
+        logging.getLogger("mail").error("Bestätigungsmail an %s fehlgeschlagen: %s", email, e)
+        raise HTTPException(502, "Die Mail konnte nicht verschickt werden. Bitte später erneut versuchen.")
+    return {"ok": True, "email": email}
+
+
+@app.get("/verify-email-change")
+def verify_email_change(request: Request, tasks: BackgroundTasks, token: str = ""):
+    row = take_mail_token(token, "email")
+    if not row:
+        return RedirectResponse("/?email_changed=0", status_code=303)
+    email = row["payload"]
+    with db() as conn:
+        old = conn.execute("SELECT username, email FROM users WHERE id=?", (row["user_id"],)).fetchone()
+        if conn.execute("SELECT 1 FROM users WHERE email=? AND id!=?", (email, row["user_id"])).fetchone():
+            return RedirectResponse("/?email_changed=0", status_code=303)  # inzwischen anderweitig vergeben
+        conn.execute("UPDATE users SET email=?, email_verified=1 WHERE id=?", (email, row["user_id"]))
+    if old["email"] and old["email"] != email:  # Sicherheitshinweis an die bisherige Adresse
+        base = public_base(request)
+        text = (f"die E-Mail-Adresse deines Bissfest-Kontos „{old['username']}“ wurde geändert. "
+                f"Wenn du das nicht warst, antworte bitte auf diese Mail oder wende dich an den Betreiber.")
+        tasks.add_task(send_quietly, old["email"], "Bissfest: Deine E-Mail-Adresse wurde geändert",
+                       f"Hallo,\n\n{text}\n", mail_html(base, ["Hallo,", text]))
+    return RedirectResponse("/?email_changed=1", status_code=303)
 
 
 class PasswordChange(BaseModel):
@@ -1599,7 +1768,8 @@ def admin_system(a=Depends(admin_user)):
     return {
         "version": APP_VERSION,
         "registration": {"configured": ALLOW_REGISTRATION, "switch": get_setting("registration_open", "1") == "1",
-                         "mail": mailer.configured(), "open": registration_open()},
+                         "mail": mailer.configured(), "open": registration_open(), "full": registration_full(),
+                         "max_users": max_users(), "users": user_count()},
         "mail_from": mailer.SMTP_FROM or None,
         "feedback_to": FEEDBACK_TO,
         "backup": {"time": backup.BACKUP_TIME or None, "keep_days": backup.BACKUP_KEEP_DAYS, "last": last_backup,
@@ -1610,6 +1780,19 @@ def admin_system(a=Depends(admin_user)):
         "android_apk": APK_PATH.exists(),
         "admins": sorted(ADMIN_USERS),
     }
+
+
+class MaxUsers(BaseModel):
+    max_users: int = Field(ge=0, le=100000)
+
+
+@app.put("/api/admin/max-users")
+def admin_max_users(m: MaxUsers, a=Depends(admin_user)):
+    """Bestehende Konten bleiben immer erhalten, das Limit wirkt nur auf neue Registrierungen."""
+    with db() as conn:
+        conn.execute("INSERT INTO app_settings (key, value) VALUES ('max_users', ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(m.max_users),))
+    return admin_system(a)
 
 
 class RegistrationSwitch(BaseModel):

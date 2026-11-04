@@ -44,7 +44,21 @@
         <button class="btn small primary">Senden</button>
       </form>
     </div>
+    <button class="link hidden" id="auth-forgot">Passwort vergessen?</button>
+    <form class="card form notice hidden" id="auth-forgot-form">
+      <strong>Passwort zurücksetzen</strong>
+      <p class="muted tiny">Gib deinen Benutzernamen oder deine E-Mail-Adresse ein. Wir schicken dir einen Link für ein neues Passwort.</p>
+      <input id="auth-forgot-id" placeholder="Benutzername oder E-Mail" autocapitalize="none" autocomplete="username" required minlength="3">
+      <button class="btn primary">Link senden</button>
+    </form>
+    <form class="card form notice hidden" id="auth-reset-form">
+      <strong>Neues Passwort festlegen</strong>
+      <input id="auth-reset-pass" type="password" placeholder="Neues Passwort (min. 8 Zeichen)" autocomplete="new-password" required minlength="8">
+      <input id="auth-reset-pass2" type="password" placeholder="Neues Passwort wiederholen" autocomplete="new-password" required minlength="8">
+      <button class="btn primary">Passwort speichern</button>
+    </form>
     <button class="link" id="auth-toggle">Noch kein Konto? Registrieren</button>
+    <p class="muted tiny hidden" id="auth-full">Auf diesem Server sind aktuell alle Plätze belegt.</p>
     <p class="copyright"><span id="auth-version"></span><span data-copyright></span></p>
   </div>
 </section>
@@ -210,6 +224,14 @@
       <button type="button" class="btn hidden" id="push-test">Test-Nachricht senden</button>
       <button type="button" class="btn danger hidden" id="push-disable">Auf diesem Gerät deaktivieren</button>
     </div>
+    <form class="card form" id="email-form">
+      <h2>E-Mail-Adresse</h2>
+      <p class="muted tiny">Aktuell: <strong id="email-current"></strong>. Die neue Adresse gilt erst, wenn du den Link in der Mail an sie bestätigt hast.</p>
+      <input type="email" id="email-new" placeholder="Neue E-Mail-Adresse" autocomplete="email" autocapitalize="none" required>
+      <input type="password" id="email-pw" placeholder="Aktuelles Passwort" autocomplete="current-password" required>
+      <button class="btn">Bestätigungslink senden</button>
+      <p class="ok" id="email-msg"></p>
+    </form>
     <form class="card form" id="pw-form">
       <h2>Passwort ändern</h2>
       <input type="password" id="pw-old" placeholder="Aktuelles Passwort" autocomplete="current-password" required>

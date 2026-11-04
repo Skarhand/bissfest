@@ -55,6 +55,7 @@ bissfest.example.de {
 | `SOURCE_URL` | – | Link zum Quellcode in den Einstellungen (Pflicht bei geänderten Fassungen, AGPL § 13) |
 | `ANDROID_PACKAGE` / `ANDROID_CERT_SHA256` | offizielle App | Nur für selbst signierte APKs ändern (assetlinks.json) |
 | `ADMIN_USERS` | – | Benutzernamen mit Zugriff auf `/admin` (kommagetrennt) |
+| `MAX_USERS` | `0` | Höchstzahl an Konten, 0 = unbegrenzt (im Admin-Dashboard änderbar) |
 | `BACKUP_TIME` | `03:00` | Uhrzeit der nächtlichen Sicherung, leer = aus |
 | `BACKUP_KEEP_DAYS` | `30` | Aufbewahrungsdauer der Backups |
 | `OFF_COUNTRY` | `de` | Länder-Subdomain für die Open-Food-Facts-Fallback-Suche |
@@ -67,7 +68,7 @@ Unter **`/admin`** (z. B. https://bissfest.facgooder.de/admin) für alle Benutze
 - **Nutzer:** Konten mit letzter Aktivität; Bestätigungsmail erneut senden, manuell bestätigen, löschen
 - **Feedback:** Ideen und Bug Reports mit Screenshot und technischen Angaben, als erledigt markieren, antworten
 - **Lebensmittel:** gemeinsame Bissfest-Datenbank mit Nutzungshäufigkeit, Einträge löschen
-- **System:** Backup-, Mail-, Speicher- und Push-Status; Registrierung ohne Neustart öffnen/sperren
+- **System:** Backup-, Mail-, Speicher- und Push-Status; Registrierung und Konten-Limit ohne Neustart ändern
 
 Aus Datenschutzgründen zeigt das Dashboard keine Mahlzeiten, Gewichte oder Körperdaten anderer Nutzer.
 
@@ -156,6 +157,8 @@ davon ausgenommen; geänderte Fassungen brauchen einen eigenen Namen. Der Urhebe
 Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und fremde Bestandteile: [NOTICE.md](NOTICE.md).
 
 ## Versionen
+- **2.7.0** – Höchstzahl an Konten (`MAX_USERS`, im Admin-Dashboard änderbar)
+- **2.6.0** – Passwort vergessen (Link per Mail) und E-Mail-Adresse ändern mit Bestätigung
 - **2.5.0** – Android-App fragt beim ersten Start nach dem Server und läuft mit jeder Bissfest-Installation
 - **2.4.3** – Lizenz AGPL-3.0, NOTICE.md, Spendenlink und Feedback-Adresse fest im Code, Quellcode-Link (`SOURCE_URL`)
 - **2.4.2** – App-Version auf der Anmeldeseite

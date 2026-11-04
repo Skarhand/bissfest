@@ -60,3 +60,5 @@ body.admin .toast { bottom: 24px; }
   .sysinfo { grid-template-columns: 1fr; gap: 2px; }
   .sysinfo dd { margin-bottom: 8px; }
 }
+#max-users-form { align-items: flex-end; }
+#max-users-form .grow { flex: 1; }

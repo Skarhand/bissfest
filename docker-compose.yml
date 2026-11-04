@@ -25,6 +25,8 @@ services:
       SOURCE_URL: ""
       # Nach dem Anlegen aller Konten auf "false" setzen, damit sich niemand Fremdes registriert
       ALLOW_REGISTRATION: "true"
+      # Höchstzahl an Konten (0 = unbegrenzt), im Admin-Dashboard änderbar
+      MAX_USERS: "15"
       # Admins für https://…/admin (Benutzernamen, kommagetrennt)
       ADMIN_USERS: "sebastian"
       # App läuft hinter HTTPS (https://bissfest.facgooder.de) – Login-Cookie nur über HTTPS senden

@@ -220,7 +220,12 @@ function renderSystem(s) {
   $("#reg-switch").checked = r.switch;
   $("#reg-hint").textContent = !r.configured ? "In der Server-Konfiguration gesperrt (ALLOW_REGISTRATION)."
     : !r.mail ? "Zugelassen, aber der Mailversand ist nicht eingerichtet – Registrierung daher zu."
-      : r.open ? "Aktuell offen: jeder mit der Adresse kann sich (mit E-Mail-Bestätigung) registrieren." : "Aktuell gesperrt.";
+      : r.full ? "Zugelassen, aber alle Plätze sind belegt – Registrierung daher zu."
+        : r.open ? "Aktuell offen: jeder mit der Adresse kann sich (mit E-Mail-Bestätigung) registrieren." : "Aktuell gesperrt.";
+  $("#max-users").value = r.max_users;
+  $("#users-usage").textContent = r.max_users
+    ? `${fmt(r.users)} von ${fmt(r.max_users)} Plätzen belegt (unbestätigte Konten zählen mit). Bestehende Konten bleiben immer erhalten.`
+    : `${fmt(r.users)} Konten, kein Limit.`;
   $("#reg-switch").disabled = !r.configured;
   const yes = (v) => (v ? "✅" : "❌");
   const rows = [
@@ -262,6 +267,13 @@ function showTab(tab) {
     renderFeedback();
   }));
   $("#foods-search").oninput = renderFoods;
+  $("#max-users-form").onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      renderSystem(await api("/admin/max-users", { method: "PUT", body: { max_users: +$("#max-users").value } }));
+      toast("Limit gespeichert");
+    } catch (err) { toast(err.message); }
+  };
   $("#reg-switch").onchange = async () => {
     try {
       renderSystem(await api("/admin/registration", { method: "PUT", body: { open: $("#reg-switch").checked } }));
