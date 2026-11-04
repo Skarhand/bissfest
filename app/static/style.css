@@ -277,3 +277,9 @@ label .search-row .btn { padding: 0 14px; font-size: 1.2rem; }
 .notice p { margin: 0; }
 
 .copyright { text-align: center; color: var(--muted); font-size: .72rem; margin: 0; }
+
+/* Einheiten / Portionen */
+.field-title { font-size: .9rem; color: var(--muted); margin-bottom: -6px; }
+.chips.units button small { color: inherit; opacity: .75; }
+.chips.units button.add { border-style: dashed; color: var(--accent); }
+.portion-new { display: grid; gap: 8px; padding: 12px; background: var(--bg); border-radius: 12px; }

@@ -216,7 +216,7 @@ function renderDay() {
       <div class="card-head"><h2>${esc(name)}</h2><span class="muted">${fmt(kcal)} kcal</span></div>
       <ul>${items.map((f) => `
         <li data-id="${f.id}">
-          <div><div class="n">${esc(f.name)}</div><div class="g">${fmt(f.grams)} g${f.brand ? " · " + esc(f.brand) : ""}</div></div>
+          <div><div class="n">${esc(f.name)}</div><div class="g">${f.portion_name ? esc(fmtPortion(f.portion_count, f.portion_name)) + " · " : ""}${fmt(f.grams)} g${f.brand ? " · " + esc(f.brand) : ""}</div></div>
           <div class="k">${fmt(f.kcal)} kcal</div>
         </li>`).join("")}</ul>
       <div class="btn-row">
@@ -506,7 +506,7 @@ function openTemplate(t) {
   $("#t-name").textContent = t.name;
   $("#t-meta").textContent = `${t.items.length} Zutat${t.items.length === 1 ? "" : "en"} · ${fmt(t.grams)} g`;
   $("#t-items").innerHTML = t.items.map((i) => `
-    <li><div><div class="n">${esc(i.name)}</div><div class="b">${fmt(i.grams)} g${i.brand ? " · " + esc(i.brand) : ""}</div></div>
+    <li><div><div class="n">${esc(i.name)}</div><div class="b">${i.portion_name ? esc(fmtPortion(i.portion_count, i.portion_name)) + " · " : ""}${fmt(i.grams)} g${i.brand ? " · " + esc(i.brand) : ""}</div></div>
       <div class="k">${fmt(i.kcal)} kcal</div></li>`).join("");
   $("#t-factors").innerHTML = PORTIONS.map(([f, label]) =>
     `<button type="button" data-f="${f}" class="${f === 1 ? "on" : ""}">${label}</button>`).join("");
@@ -543,18 +543,28 @@ function fillMealSelect(selected) {
   $("#a-meal").innerHTML = state.user.meal_names.map((n, i) => `<option value="${i}" ${i === selected ? "selected" : ""}>${esc(n)}</option>`).join("");
 }
 
+/* ------------------------------------------------------------ Menge & Portionen */
+
+// "2 × Scheibe", "½ × Stück", "1½ × EL"
+function fmtCount(n) {
+  const whole = Math.floor(n), frac = Math.round((n - whole) * 100) / 100;
+  if (frac === 0.5) return (whole ? whole : "") + "½";
+  return fmt(n, n % 1 ? 1 : 0);
+}
+const fmtPortion = (count, name) => `${fmtCount(count)} × ${name}`;
+
 function pickFood(f, grams, isEdit = false) {
   stopScan();
   state.pick = f;
+  const seq = (state.pickSeq = (state.pickSeq || 0) + 1);
   $("#a-name").textContent = f.name;
   const macros = [f.protein_100g != null && `E ${fmt(f.protein_100g, 1)}`, f.carbs_100g != null && `KH ${fmt(f.carbs_100g, 1)}`,
     f.sugar_100g != null && `Zucker ${fmt(f.sugar_100g, 1)}`, f.fat_100g != null && `F ${fmt(f.fat_100g, 1)}`].filter(Boolean).join(" · ");
   $("#a-meta").textContent = [f.brand, `${fmt(f.kcal_100g)} kcal/100 g`, macros, f.source].filter(Boolean).join(" · ");
-  $("#a-grams").value = grams ?? f.serving_g ?? f.grams ?? 100;
-  const chips = [50, 100, 150, 200, 250];
-  if (f.serving_g && !chips.includes(f.serving_g)) chips.unshift(f.serving_g);
-  $("#a-chips").innerHTML = chips.map((g) => `<button type="button" data-g="${g}">${fmt(g)} g${g === f.serving_g ? " (Portion)" : ""}</button>`).join("");
-  $$("#a-chips button").forEach((b) => (b.onclick = () => { $("#a-grams").value = b.dataset.g; updatePreview(); }));
+  $("#a-new-portion").classList.add("hidden");
+  // Erst mit Gramm anzeigen, Portionen laden nach
+  state.units = [{ name: null, grams: 1 }];
+  selectUnit(0, grams ?? f.grams ?? 100);
   fillMealSelect(state.meal);
   $("#a-save").textContent = isEdit ? "Speichern" : "Eintragen";
   $("#a-delete").classList.toggle("hidden", !isEdit);
@@ -562,12 +572,71 @@ function pickFood(f, grams, isEdit = false) {
   $("#a-delete-custom").classList.toggle("hidden", isEdit || !(f.custom_id && f.mine));
   state.lastTab = $("#sheet-tabs .active")?.dataset.tab || "search";
   showTab("amount");
+  loadUnits(f).then((units) => {
+    if (seq !== state.pickSeq) return; // inzwischen anderes Lebensmittel gewählt
+    state.units = units;
+    // Vorauswahl: zuletzt genutzte Portion, sonst erste Portion, sonst Gramm
+    const last = f.portion_name && units.findIndex((u) => u.name && u.name.toLowerCase() === f.portion_name.toLowerCase());
+    if (last > 0) selectUnit(last, isEdit ? f.portion_count : (f.portion_count || 1));
+    else if (units.length > 1 && grams == null) selectUnit(1, 1);
+    else selectUnit(0, grams ?? f.grams ?? 100);
+  });
+}
+
+async function loadUnits(f) {
+  const q = new URLSearchParams({ name: f.name, brand: f.brand || "", source: f.source || "", code: f.code || "" });
+  const r = await api("/portions?" + q).catch(() => ({ saved: [], suggested: [] }));
+  const units = [{ name: null, grams: 1 }], seen = new Set();
+  const add = (p, kind) => {
+    const k = p.name.toLowerCase();
+    if (seen.has(k) || !(p.grams > 0)) return;
+    seen.add(k);
+    units.push({ ...p, kind });
+  };
+  r.saved.forEach((p) => add(p, "saved"));
+  (f.source_portions || []).forEach((p) => add(p, "source"));
+  // Portion aus einem früheren Eintrag (z. B. "Zuletzt"), falls sie nicht gespeichert ist
+  if (f.portion_name && f.portion_count && f.grams) add({ name: f.portion_name, grams: Math.round((f.grams / f.portion_count) * 10) / 10 }, "entry");
+  r.suggested.forEach((p) => add(p, "suggested"));
+  return units;
+}
+
+function selectUnit(i, qty) {
+  state.unit = i;
+  const u = state.units[i];
+  $("#a-units").innerHTML = state.units.map((x, j) => `
+    <button type="button" data-u="${j}" class="${j === i ? "on" : ""}">${x.name
+      ? `${esc(x.name)} · ${fmt(x.grams, x.grams % 1 ? 1 : 0)} g${x.kind === "suggested" ? " <small>(typisch)</small>" : ""}`
+      : "Gramm"}</button>`).join("") + `<button type="button" class="add" id="a-add-portion">+ Portion</button>`;
+  $$("#a-units [data-u]").forEach((b) => (b.onclick = () => selectUnit(+b.dataset.u, +b.dataset.u ? 1 : Math.round(currentGrams()) || 100)));
+  $("#a-add-portion").onclick = () => {
+    $("#a-new-portion").classList.toggle("hidden");
+    $("#np-name").focus();
+  };
+  $("#a-qty-label").textContent = u.name ? `Anzahl ${u.name}` : "Menge (g / ml)";
+  $("#a-grams").value = qty;
+  const quick = u.name ? [[0.5, "½"], [1, "1"], [2, "2"], [3, "3"]] : [50, 100, 150, 200, 250].map((g) => [g, `${g} g`]);
+  $("#a-chips").innerHTML = quick.map(([v, label]) => `<button type="button" data-q="${v}">${label}</button>`).join("");
+  $$("#a-chips button").forEach((b) => (b.onclick = () => { $("#a-grams").value = b.dataset.q; updatePreview(); }));
   updatePreview();
 }
 
+function currentGrams() {
+  const qty = parseFloat($("#a-grams").value.replace(",", ".")) || 0;
+  return Math.round(qty * state.units[state.unit].grams * 10) / 10;
+}
+
 function updatePreview() {
-  const g = parseFloat($("#a-grams").value.replace(",", ".")) || 0;
+  const g = currentGrams(), u = state.units[state.unit];
   $("#a-kcal").textContent = fmt((state.pick.kcal_100g * g) / 100);
+  $("#a-grams-info").textContent = u.name ? `= ${fmt(g, g % 1 ? 1 : 0)} g` : "";
+}
+
+async function savePortion(f, name, grams) {
+  return api("/portions", {
+    method: "POST",
+    body: { name: f.name, brand: f.brand || "", source: f.source || "", code: f.code || "", portion_name: name, grams },
+  });
 }
 
 function editEntry(id) {
@@ -583,12 +652,17 @@ function editEntry(id) {
 
 async function saveAmount(e) {
   e.preventDefault();
-  const grams = parseFloat($("#a-grams").value.replace(",", "."));
+  const grams = currentGrams();
   const meal = +$("#a-meal").value;
-  const f = state.pick;
+  const f = state.pick, u = state.units[state.unit];
+  const qty = parseFloat($("#a-grams").value.replace(",", "."));
+  const portion = u.name ? { portion_name: u.name, portion_count: qty } : { portion_name: null, portion_count: null };
+  if (!(grams > 0)) return toast("Bitte eine Menge eingeben");
   try {
+    // Vorgeschlagene oder aus der Datenbank stammende Portion beim ersten Benutzen dauerhaft merken
+    if (u.name && u.kind !== "saved") await savePortion(f, u.name, u.grams).catch(() => {});
     if (state.editId) {
-      await api("/food/" + state.editId, { method: "PATCH", body: { grams, meal } });
+      await api("/food/" + state.editId, { method: "PATCH", body: { grams, meal, ...portion } });
     } else {
       await api("/food", {
         method: "POST",
@@ -596,7 +670,7 @@ async function saveAmount(e) {
           day: state.day, meal, grams, name: f.name, brand: f.brand || "", kcal_100g: f.kcal_100g,
           protein_100g: f.protein_100g ?? null, carbs_100g: f.carbs_100g ?? null, sugar_100g: f.sugar_100g ?? null,
           fat_100g: f.fat_100g ?? null,
-          source: f.source || "manuell", code: f.code || "",
+          source: f.source || "manuell", code: f.code || "", ...portion,
         },
       });
     }
@@ -635,6 +709,8 @@ function initSheet() {
           carbs_100g: num("#m-carbs"), sugar_100g: num("#m-sugar"), fat_100g: num("#m-fat"),
         },
       });
+      const pName = $("#m-portion-name").value.trim(), pGrams = num("#m-portion-grams");
+      if (pName && pGrams > 0) await savePortion(food, pName, pGrams).catch(() => {});
       e.target.reset();
       toast("In der Bissfest-Datenbank gespeichert");
       pickFood(food);
@@ -651,6 +727,19 @@ function initSheet() {
   };
   initTemplates();
   $("#a-grams").oninput = updatePreview;
+  $("#np-save").onclick = async () => {
+    const name = $("#np-name").value.trim(), grams = parseFloat($("#np-grams").value.replace(",", "."));
+    if (!name || !(grams > 0)) return toast("Bitte Name und Gramm angeben");
+    try {
+      await savePortion(state.pick, name, grams);
+      state.units = await loadUnits(state.pick);
+      const i = state.units.findIndex((u) => u.name && u.name.toLowerCase() === name.toLowerCase());
+      $("#np-name").value = $("#np-grams").value = "";
+      $("#a-new-portion").classList.add("hidden");
+      selectUnit(i > 0 ? i : 0, 1);
+      toast(`Portion „${name}“ gespeichert`);
+    } catch (err) { toast(err.message); }
+  };
   $("#a-back").onclick = () => showTab(state.lastTab || "search");
   $("#tab-amount").onsubmit = saveAmount;
   $("#a-delete").onclick = async () => {

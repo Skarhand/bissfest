@@ -283,6 +283,10 @@
           <button type="button" class="btn" id="m-code-scan" aria-label="Barcode scannen">📷</button>
         </span>
       </label>
+      <div class="row2">
+        <label>Portion (optional)<input id="m-portion-name" list="portion-names" placeholder="z. B. Scheibe" maxlength="30"></label>
+        <label>Gramm pro Portion<input id="m-portion-grams" type="number" inputmode="decimal" step="any" min="0.1" max="3000" placeholder="z. B. 25"></label>
+      </div>
       <h2>Nährwerte pro 100 g</h2>
       <label>Brennwert (kcal) *<input id="m-kcal" type="number" inputmode="decimal" step="0.1" min="0" max="1000" required></label>
       <div class="row2">
@@ -303,10 +307,21 @@
         <strong id="a-name"></strong>
         <span class="muted tiny" id="a-meta"></span>
       </div>
-      <label>Menge (g / ml)
-        <input id="a-grams" type="number" inputmode="decimal" step="1" min="1" max="5000" required>
+      <div class="field-title">Einheit</div>
+      <div class="chips units" id="a-units"></div>
+      <div class="portion-new hidden" id="a-new-portion">
+        <div class="row2">
+          <label>Portion<input id="np-name" list="portion-names" placeholder="z. B. Scheibe" maxlength="30"></label>
+          <label>Gramm pro Portion<input id="np-grams" type="number" inputmode="decimal" step="any" min="0.1" max="3000" placeholder="z. B. 25"></label>
+        </div>
+        <button type="button" class="btn small" id="np-save">Portion speichern</button>
+        <p class="muted tiny">Gilt für dieses Lebensmittel bei allen Bissfest-Nutzern. Gleicher Name überschreibt die Grammzahl.</p>
+      </div>
+      <label><span id="a-qty-label">Menge (g / ml)</span>
+        <input id="a-grams" type="number" inputmode="decimal" step="any" min="0.1" max="5000" required>
       </label>
       <div class="chips" id="a-chips"></div>
+      <p class="muted tiny center" id="a-grams-info"></p>
       <label>Mahlzeit<select id="a-meal"></select></label>
       <div class="kcal-preview"><strong id="a-kcal">0</strong> kcal</div>
       <button class="btn primary" id="a-save">Eintragen</button>
@@ -316,6 +331,13 @@
     </form>
   </div>
 </div>
+
+<datalist id="portion-names">
+  <option value="Scheibe"></option><option value="Stück"></option><option value="Portion"></option>
+  <option value="EL"></option><option value="TL"></option><option value="Becher"></option>
+  <option value="Glas"></option><option value="Tasse"></option><option value="Schale"></option>
+  <option value="Handvoll"></option><option value="Riegel"></option><option value="Packung"></option>
+</datalist>
 
 <!-- Barcode-Scanner (Vollbild) -->
 <div id="scanner" class="scanner hidden" role="dialog" aria-label="Barcode-Scanner">

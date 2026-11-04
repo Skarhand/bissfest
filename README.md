@@ -113,6 +113,7 @@ docker compose start
 - Nährwertdaten: Open Food Facts (ODbL), USDA FoodData Central (Public Domain).
 
 ## Versionen
+- **1.12.0** – Portionen statt Gramm (z. B. „1 × Scheibe“): eigene, aus den Datenbanken und typische Vorschläge
 - **1.11.1** – Copyright-Hinweis
 - **1.11.0** – Registrierung mit E-Mail-Bestätigung (SMTP über `.env`)
 - **1.10.0** – Neues Logo und App-Icon, Markenfarben, Betrieb unter https://bissfest.facgooder.de

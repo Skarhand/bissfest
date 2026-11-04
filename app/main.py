@@ -37,7 +37,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "1.11.1"
+APP_VERSION = "1.12.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -149,6 +149,15 @@ CREATE TABLE IF NOT EXISTS email_tokens (
     purpose TEXT NOT NULL,
     expires INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS food_portions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    food_key TEXT NOT NULL,
+    name TEXT NOT NULL COLLATE NOCASE,
+    grams REAL NOT NULL,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created INTEGER NOT NULL,
+    UNIQUE (food_key, name)
+);
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     endpoint TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -164,6 +173,8 @@ PROFILE_COLUMNS = {"sex": "TEXT", "birth_year": "INTEGER", "height_cm": "REAL", 
                    "reminders": "TEXT", "email": "TEXT",
                    # bestehende Konten gelten als bestätigt; neue Registrierungen setzen 0
                    "email_verified": "INTEGER NOT NULL DEFAULT 1"}
+# Später ergänzte Spalten für Einträge und Gericht-Zutaten: Zucker und die gewählte Portion ("2 × Scheibe")
+ENTRY_COLUMNS = {"sugar_100g": "REAL", "portion_name": "TEXT", "portion_count": "REAL"}
 ACTIVITY_FACTORS = (1.2, 1.375, 1.55, 1.725, 1.9)
 
 
@@ -215,10 +226,19 @@ def init_db():
         for col, typ in PROFILE_COLUMNS.items():
             if col not in cols:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
-        if "sugar_100g" not in {r["name"] for r in conn.execute("PRAGMA table_info(food_entries)")}:
-            conn.execute("ALTER TABLE food_entries ADD COLUMN sugar_100g REAL")
+        for table in ("food_entries", "meal_template_items"):
+            have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+            for col, typ in ENTRY_COLUMNS.items():
+                if col not in have:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
         conn.execute("DELETE FROM sessions WHERE expires < ?", (int(time.time()),))
         migrate_meal_order(conn)
+        # Einträge aus der Bissfest-DB ohne Barcode bekommen "custom:<id>" als Code (stabiler Portionsschlüssel)
+        for table in ("food_entries", "meal_template_items"):
+            conn.execute(f"""UPDATE {table} SET code = 'custom:' || (SELECT cf.id FROM custom_foods cf
+                             WHERE cf.name = {table}.name AND cf.code = '' ORDER BY cf.id LIMIT 1)
+                             WHERE code = '' AND source = 'Bissfest-DB'
+                             AND EXISTS (SELECT 1 FROM custom_foods cf WHERE cf.name = {table}.name AND cf.code = '')""")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) "
                      "WHERE email IS NOT NULL")
         cleanup_unverified(conn)
@@ -514,7 +534,7 @@ NUTRIENTS = ("protein", "carbs", "sugar", "fat")  # je 100 g gespeichert als <na
 def entry_dict(r: sqlite3.Row) -> dict:
     d = dict(r)
     factor = d["grams"] / 100
-    d["kcal"] = round(d["kcal_100g"] * factor)
+    d["kcal"] = int(d["kcal_100g"] * factor + 0.5)  # kaufmännisch runden wie in der App-Vorschau
     for k in NUTRIENTS:
         v = d.pop(f"{k}_100g", None)
         d[k] = round(v * factor, 1) if v is not None else None
@@ -552,6 +572,8 @@ class FoodIn(BaseModel):
     fat_100g: float | None = Field(default=None, ge=0, le=100)
     source: str = Field(default="manuell", max_length=40)
     code: str = Field(default="", max_length=60)
+    portion_name: str | None = Field(default=None, max_length=40)
+    portion_count: float | None = Field(default=None, gt=0, le=100)
 
 
 @app.post("/api/food")
@@ -560,9 +582,11 @@ def add_food(f: FoodIn, u=Depends(current_user)):
     with db() as conn:
         cur = conn.execute(
             """INSERT INTO food_entries (user_id, day, meal, name, brand, grams, kcal_100g, protein_100g,
-               carbs_100g, sugar_100g, fat_100g, source, code, created) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               carbs_100g, sugar_100g, fat_100g, source, code, portion_name, portion_count, created)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (u["id"], day, f.meal, f.name.strip(), f.brand.strip(), f.grams, f.kcal_100g, f.protein_100g,
-             f.carbs_100g, f.sugar_100g, f.fat_100g, f.source, f.code, int(time.time())),
+             f.carbs_100g, f.sugar_100g, f.fat_100g, f.source, f.code, f.portion_name,
+             f.portion_count if f.portion_name else None, int(time.time())),
         )
     return {"id": cur.lastrowid}
 
@@ -570,14 +594,17 @@ def add_food(f: FoodIn, u=Depends(current_user)):
 class FoodPatch(BaseModel):
     grams: float = Field(gt=0, le=5000)
     meal: int | None = Field(default=None, ge=0, le=6)
+    portion_name: str | None = Field(default=None, max_length=40)
+    portion_count: float | None = Field(default=None, gt=0, le=100)
 
 
 @app.patch("/api/food/{entry_id}")
 def edit_food(entry_id: int, p: FoodPatch, u=Depends(current_user)):
     with db() as conn:
         cur = conn.execute(
-            "UPDATE food_entries SET grams=?, meal=COALESCE(?, meal) WHERE id=? AND user_id=?",
-            (p.grams, p.meal, entry_id, u["id"]))
+            "UPDATE food_entries SET grams=?, meal=COALESCE(?, meal), portion_name=?, portion_count=? "
+            "WHERE id=? AND user_id=?",
+            (p.grams, p.meal, p.portion_name, p.portion_count if p.portion_name else None, entry_id, u["id"]))
     if not cur.rowcount:
         raise HTTPException(404, "Eintrag nicht gefunden")
     return {"ok": True}
@@ -596,6 +623,7 @@ def recent_foods(u=Depends(current_user)):
     with db() as conn:
         rows = conn.execute(
             """SELECT name, brand, kcal_100g, protein_100g, carbs_100g, sugar_100g, fat_100g, source, code,
+                      portion_name, portion_count,
                       grams, MAX(created) AS last
                FROM food_entries WHERE user_id=? GROUP BY name, brand ORDER BY last DESC LIMIT 30""",
             (u["id"],)).fetchall()
@@ -682,11 +710,24 @@ def _off_product(p: dict) -> dict | None:
         "protein_100g": _num(n.get("proteins_100g")), "carbs_100g": _num(n.get("carbohydrates_100g")),
         "sugar_100g": _num(n.get("sugars_100g")), "fat_100g": _num(n.get("fat_100g")), "source": "Open Food Facts", "code": str(p.get("code") or ""),
         "serving_g": _num(p.get("serving_quantity")),
+        "source_portions": _off_portion(p),
     }
 
 
+def _off_portion(p: dict) -> list[dict]:
+    """Packungsportion aus Open Food Facts, z. B. serving_size "1 Scheibe (25 g)" -> Scheibe = 25 g."""
+    grams = _num(p.get("serving_quantity"))
+    if not grams or (p.get("serving_quantity_unit") or "g") not in ("g", "ml"):
+        return []
+    label = re.sub(r"\(.*?\)", "", p.get("serving_size") or "").strip()
+    label = re.sub(r"^\d+([.,]\d+)?\s*", "", label).strip()       # führende Anzahl entfernen
+    if not label or re.fullmatch(r"(g|ml|gramm|gr)\.?", label, re.I):
+        label = "Portion"
+    return [{"name": label[:30].capitalize(), "grams": grams}]
+
+
 async def search_off(client: httpx.AsyncClient, q: str) -> list[dict]:
-    fields = "code,product_name,product_name_de,brands,nutriments,serving_quantity"
+    fields = "code,product_name,product_name_de,brands,nutriments,serving_quantity,serving_quantity_unit,serving_size"
     try:  # neue Such-API (search-a-licious)
         r = await client.get("https://search.openfoodfacts.org/search",
                              params={"q": q, "page_size": 25, "fields": fields, "langs": "de,en"})
@@ -719,9 +760,29 @@ async def search_fdc(client: httpx.AsyncClient, q: str) -> list[dict]:
             key = FDC_NUTRIENTS.get(str(nut.get("nutrientNumber")))
             if key and (key != "kcal_100g" or nut.get("unitName", "").upper() == "KCAL"):
                 item[key] = _num(nut.get("value"))
+        item["source_portions"] = _fdc_portions(f.get("foodMeasures") or [])
         if item["kcal_100g"] is not None:
             out.append(item)
     return out
+
+
+FDC_UNITS = [(r"\bslices?\b", "Scheibe"), (r"\bcups?\b", "Tasse"), (r"\b(tbsp|tablespoons?)\b", "EL"),
+             (r"\b(tsp|teaspoons?)\b", "TL"), (r"\b(pieces?|each)\b", "Stück"), (r"\bmedium\b", "Stück (mittel)"),
+             (r"\bsmall\b", "Stück (klein)"), (r"\blarge\b", "Stück (groß)"), (r"\bservings?\b", "Portion")]
+
+
+def _fdc_portions(measures: list[dict]) -> list[dict]:
+    """USDA-Haushaltsmaße ("1 slice", 25 g) -> deutsche Portionsnamen, nur Angaben für genau 1 Einheit."""
+    out, seen = [], set()
+    for m in measures:
+        text, grams = (m.get("disseminationText") or "").lower(), _num(m.get("gramWeight"))
+        if not grams or "not specified" in text or not re.match(r"^1\s", text):
+            continue
+        name = next((de for pat, de in FDC_UNITS if re.search(pat, text)), None)
+        if name and name not in seen:
+            seen.add(name)
+            out.append({"name": name, "grams": grams})
+    return out[:4]
 
 
 @app.get("/api/foods/search")
@@ -753,7 +814,8 @@ async def food_barcode(code: str, u=Depends(current_user)):
     async with httpx.AsyncClient(timeout=12, headers={"User-Agent": USER_AGENT}) as client:
         try:
             r = await client.get(f"https://world.openfoodfacts.org/api/v2/product/{code}.json",
-                                 params={"fields": "code,product_name,product_name_de,brands,nutriments,serving_quantity"})
+                                 params={"fields": "code,product_name,product_name_de,brands,nutriments,"
+                                                   "serving_quantity,serving_quantity_unit,serving_size"})
         except httpx.HTTPError:
             raise HTTPException(502, "Open Food Facts nicht erreichbar")
     data = r.json() if r.status_code in (200, 404) else {}
@@ -769,10 +831,11 @@ def custom_food_dict(r: sqlite3.Row, user_id: int) -> dict:
     return {
         "custom_id": r["id"], "mine": r["created_by"] == user_id,
         "name": r["name"], "manufacturer": r["manufacturer"], "brand_name": r["brand"],
-        "brand": " · ".join(x for x in (r["brand"], r["manufacturer"]) if x),
+        "brand": " · ".join(dict.fromkeys(x for x in (r["brand"], r["manufacturer"]) if x)),  # gleiche Angabe nur einmal
         "kcal_100g": r["kcal_100g"], "protein_100g": r["protein_100g"], "carbs_100g": r["carbs_100g"],
         "sugar_100g": r["sugar_100g"], "fat_100g": r["fat_100g"],
-        "source": "Bissfest-DB", "code": r["code"], "serving_g": None,
+        # ohne Barcode dient die eigene ID als Code – so bleiben Portionen auch bei Namensänderungen zugeordnet
+        "source": "Bissfest-DB", "code": r["code"] or f"custom:{r['id']}", "serving_g": None,
     }
 
 
@@ -821,9 +884,77 @@ def delete_custom_food(food_id: int, u=Depends(current_user)):
     return {"ok": True}
 
 
+# ---------------------------------------------------------------- Portionen ("1 Scheibe = 25 g")
+
+# Typische Portionen als Vorschlag, solange für ein Lebensmittel noch keine gespeichert ist.
+# (Muster auf den kleingeschriebenen Namen, Portion, Gramm) – die erste passende Regel gewinnt.
+PORTION_SUGGESTIONS = [
+    (r"saft|schorle|smoothie", "Glas", 200), (r"schokolade", "Stück", 5), (r"riegel", "Riegel", 25),
+    (r"keks|cookie", "Stück", 10), (r"toast|sandwich", "Scheibe", 25), (r"brötchen|semmel|schrippe", "Stück", 60),
+    (r"\bbrot\b|vollkornbrot|bauernbrot|roggenbrot", "Scheibe", 45), (r"knäcke", "Scheibe", 10),
+    (r"\beier?\b", "Stück", 55), (r"apfel", "Stück", 180), (r"banane", "Stück", 120),
+    (r"orange|apfelsine", "Stück", 150), (r"birne", "Stück", 170), (r"kiwi", "Stück", 75),
+    (r"mandarine|clementine", "Stück", 60), (r"pfirsich|nektarine", "Stück", 140),
+    (r"salami|wurst|aufschnitt", "Scheibe", 10), (r"schinken", "Scheibe", 15), (r"käse", "Scheibe", 25),
+    (r"joghurt|yoghurt|skyr|quark", "Becher", 150), (r"milch", "Glas", 200),
+    (r"kaffee|\btee\b", "Tasse", 150), (r"butter|margarine", "Portion", 10),
+    (r"nutella|nussnougat|marmelade|konfitüre|honig|aufstrich", "TL", 8),
+    (r"haferflocken|müsli|granola|cornflakes", "EL", 10), (r"\böl\b|olivenöl|rapsöl", "EL", 10),
+]
+
+
+def food_key(source: str, code: str, name: str, brand: str) -> str:
+    """Eindeutiger Schlüssel eines Lebensmittels: Barcode/ID, sonst Name + Marke."""
+    if code:
+        return f"usda:{code}" if source == "USDA" else code
+    return f"n:{name.strip().lower()}|{brand.strip().lower()}"
+
+
+@app.get("/api/portions")
+def get_portions(name: str, brand: str = "", source: str = "", code: str = "", u=Depends(current_user)):
+    key = food_key(source, code, name, brand)
+    with db() as conn:
+        saved = [{"id": r["id"], "name": r["name"], "grams": r["grams"], "mine": r["created_by"] == u["id"]}
+                 for r in conn.execute("SELECT * FROM food_portions WHERE food_key=? ORDER BY grams", (key,))]
+    lname = name.lower()
+    suggested = [{"name": n, "grams": g} for pat, n, g in PORTION_SUGGESTIONS if re.search(pat, lname)][:1]
+    return {"saved": saved, "suggested": suggested}
+
+
+class PortionIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)  # Lebensmittel
+    brand: str = Field(default="", max_length=200)
+    source: str = Field(default="", max_length=40)
+    code: str = Field(default="", max_length=60)
+    portion_name: str = Field(min_length=1, max_length=30)
+    grams: float = Field(gt=0, le=3000)
+
+
+@app.post("/api/portions")
+def save_portion(p: PortionIn, u=Depends(current_user)):
+    """Portion für alle Nutzer speichern; gleicher Name überschreibt die Grammzahl."""
+    key = food_key(p.source, p.code, p.name, p.brand)
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO food_portions (food_key, name, grams, created_by, created) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(food_key, name) DO UPDATE SET grams=excluded.grams",
+            (key, p.portion_name.strip(), p.grams, u["id"], int(time.time())))
+    return get_portions(p.name, p.brand, p.source, p.code, u)
+
+
+@app.delete("/api/portions/{portion_id}")
+def delete_portion(portion_id: int, u=Depends(current_user)):
+    with db() as conn:
+        cur = conn.execute("DELETE FROM food_portions WHERE id=? AND created_by=?", (portion_id, u["id"]))
+    if not cur.rowcount:
+        raise HTTPException(403, "Nur wer die Portion angelegt hat, kann sie löschen")
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------- Gerichte (gespeicherte Mahlzeiten)
 
-ITEM_COLS = "name, brand, grams, kcal_100g, protein_100g, carbs_100g, sugar_100g, fat_100g, source, code"
+ITEM_COLS = ("name, brand, grams, kcal_100g, protein_100g, carbs_100g, sugar_100g, fat_100g, source, code, "
+             "portion_name, portion_count")
 
 
 @app.get("/api/templates")
@@ -879,8 +1010,9 @@ def apply_template(tpl_id: int, a: TemplateApply, u=Depends(current_user)):
         cur = conn.execute(
             f"INSERT INTO food_entries (user_id, day, meal, created, {ITEM_COLS}) "
             f"SELECT ?, ?, ?, ?, name, brand, ROUND(grams * ?, 1), kcal_100g, protein_100g, carbs_100g, sugar_100g, "
-            f"fat_100g, source, code FROM meal_template_items WHERE template_id=? ORDER BY id",
-            (u["id"], day, a.meal, int(time.time()), a.factor, tpl_id))
+            f"fat_100g, source, code, portion_name, portion_count * ? FROM meal_template_items "
+            f"WHERE template_id=? ORDER BY id",
+            (u["id"], day, a.meal, int(time.time()), a.factor, a.factor, tpl_id))
     return {"added": cur.rowcount}
 
 
