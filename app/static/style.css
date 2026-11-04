@@ -283,3 +283,25 @@ label .search-row .btn { padding: 0 14px; font-size: 1.2rem; }
 .chips.units button small { color: inherit; opacity: .75; }
 .chips.units button.add { border-style: dashed; color: var(--accent); }
 .portion-new { display: grid; gap: 8px; padding: 12px; background: var(--bg); border-radius: 12px; }
+
+/* Kaffee-Tracker */
+.coffee-row { display: flex; align-items: stretch; gap: 8px; }
+.coffee-row .btn { min-width: 48px; }
+.coffee-row .btn.primary { flex: 1; display: grid; line-height: 1.2; }
+.coffee-row .btn small { font-weight: 400; opacity: .85; font-size: .75rem; }
+.cups { text-align: center; }
+.cups strong { font-size: 1.15rem; }
+.cup-icons { display: block; font-size: 1.1rem; letter-spacing: 2px; min-height: 1.4em; }
+.cup-icons .mug { font-size: 1.55rem; vertical-align: -2px; }
+.btn:disabled { opacity: .4; }
+.switch-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--text); font-size: 1rem; cursor: pointer; }
+.switch-row input[type=checkbox] {
+  appearance: none; -webkit-appearance: none; width: 52px; height: 32px; padding: 0; flex: none;
+  border-radius: 99px; background: var(--line); position: relative; cursor: pointer; transition: background .2s; border: 0;
+}
+.switch-row input[type=checkbox]::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .2s;
+}
+.switch-row input[type=checkbox]:checked { background: var(--accent); }
+.switch-row input[type=checkbox]:checked::after { transform: translateX(20px); }

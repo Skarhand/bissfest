@@ -113,6 +113,8 @@ docker compose start
 - Nährwertdaten: Open Food Facts (ODbL), USDA FoodData Central (Public Domain).
 
 ## Versionen
+- **1.14.0** – Kaffee-Tracker: Tasse (150 ml) oder Pott (250 ml), Koffein nach Menge, letzten Kaffee zurücknehmen
+- **1.13.0** – Kaffee-Tracker als zuschaltbares Extra (Tassen, Koffein, Verlauf)
 - **1.12.0** – Portionen statt Gramm (z. B. „1 × Scheibe“): eigene, aus den Datenbanken und typische Vorschläge
 - **1.11.1** – Copyright-Hinweis
 - **1.11.0** – Registrierung mit E-Mail-Bestätigung (SMTP über `.env`)

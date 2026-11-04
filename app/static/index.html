@@ -89,6 +89,17 @@
       </div>
     </div>
 
+    <div class="card coffee hidden" id="coffee-card">
+      <div class="card-head"><h2>☕ Kaffee</h2><span class="muted" id="coffee-caffeine"></span></div>
+      <div class="cups" id="coffee-cups"></div>
+      <div class="coffee-row">
+        <button type="button" class="btn small" id="coffee-undo" aria-label="Letzten Kaffee zurücknehmen">−</button>
+        <button type="button" class="btn small primary" id="coffee-cup">+ Tasse <small>150 ml</small></button>
+        <button type="button" class="btn small primary" id="coffee-mug">+ Pott <small>250 ml</small></button>
+      </div>
+      <p class="muted tiny" id="coffee-hint"></p>
+    </div>
+
     <div id="meals"></div>
     <p class="version" id="app-version"></p>
     <p class="copyright" data-copyright></p>
@@ -109,6 +120,10 @@
       <div id="deficit-stats" class="stats-grid"></div>
       <p class="muted tiny" id="deficit-hint"></p>
     </div>
+    <div class="card hidden" id="coffee-history">
+      <div class="card-head"><h2>☕ Kaffee</h2></div>
+      <div id="coffee-stats" class="stats-grid"></div>
+    </div>
   </main>
 
   <main id="view-settings" class="view hidden">
@@ -120,6 +135,20 @@
         <button type="button" role="radio" data-theme-choice="system">⚙️ System</button>
       </div>
       <p class="muted tiny">„System“ folgt automatisch der Einstellung deines Handys. Gilt für dieses Gerät.</p>
+    </div>
+    <div class="card form" id="extras-card">
+      <h2>✨ Extras</h2>
+      <label class="switch-row">
+        <span><strong>☕ Kaffee-Tracker</strong><br><span class="muted tiny">Tassen und Koffein pro Tag zählen</span></span>
+        <input type="checkbox" id="s-coffee" role="switch">
+      </label>
+      <div id="s-coffee-details" class="form">
+        <label>Koffein pro Tasse (150 ml, in mg)<input type="number" id="s-caffeine" inputmode="numeric" min="0" max="500" step="5"></label>
+        <p class="muted tiny">Richtwerte: Filterkaffee ≈ 90 mg, Cappuccino ≈ 75 mg, Espresso ≈ 65 mg, entkoffeiniert ≈ 3 mg.
+          Ein Pott (250 ml) zählt automatisch mit der entsprechend größeren Menge. Milch und Zucker bitte als
+          Lebensmittel eintragen – die Kaffee-Karte zählt keine Kalorien.</p>
+      </div>
+      <p class="ok" id="extras-msg"></p>
     </div>
     <button type="button" class="card menu-item" id="open-body">
       <span class="mi-icon">🧮</span>
