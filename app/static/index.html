@@ -38,9 +38,14 @@
       <strong id="auth-notice-title"></strong>
       <p class="muted tiny" id="auth-notice-text"></p>
       <button type="button" class="btn small hidden" id="auth-resend">Bestätigungsmail erneut senden</button>
+      <button type="button" class="link hidden" id="auth-fix-open">Falsche Adresse? E-Mail korrigieren</button>
+      <form class="search-row hidden" id="auth-fix">
+        <input id="auth-fix-email" type="email" autocomplete="email" autocapitalize="none" required placeholder="Richtige E-Mail-Adresse">
+        <button class="btn small primary">Senden</button>
+      </form>
     </div>
     <button class="link" id="auth-toggle">Noch kein Konto? Registrieren</button>
-    <p class="copyright" data-copyright></p>
+    <p class="copyright"><span id="auth-version"></span><span data-copyright></span></p>
   </div>
 </section>
 
@@ -54,6 +59,15 @@
   </header>
 
   <main id="view-today" class="view">
+    <div class="card goal-hint hidden" id="goal-hint">
+      <strong>👋 Dein Kalorienziel ist noch ein Beispielwert</strong>
+      <p class="muted tiny">Die voreingestellten <b id="goal-hint-kcal"></b> kcal passen nicht für jeden. Berechne in einer Minute
+        dein persönliches Ziel aus Größe, Gewicht, Alter und Aktivität.</p>
+      <div class="btn-row">
+        <button type="button" class="btn small primary" id="goal-hint-open">Jetzt berechnen</button>
+        <button type="button" class="btn small" id="goal-hint-dismiss">Mein Ziel passt so</button>
+      </div>
+    </div>
     <div class="card summary">
       <div class="ring-wrap">
         <svg viewBox="0 0 120 120" class="ring">
@@ -420,6 +434,52 @@
       <button type="button" class="link" id="a-back">‹ Zurück zur Auswahl</button>
     </form>
   </div>
+</div>
+
+<!-- Einrichtungs-Assistent: persönliches Kalorienziel -->
+<div id="onboarding" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="onb-title">
+  <form class="sheet-panel compact form" id="onb-form">
+    <div class="sheet-head">
+      <h2 id="onb-title">👋 Willkommen bei Bissfest</h2>
+      <button type="button" class="icon-btn" id="onb-close" aria-label="Später">✕</button>
+    </div>
+    <p class="muted tiny">Lass uns dein persönliches Kalorienziel berechnen – die voreingestellten Werte sind nur Beispiele.
+      Alles lässt sich später unter Einstellungen → Körperdaten &amp; Kaloriendefizit ändern.</p>
+    <div class="row2">
+      <label>Geschlecht
+        <select id="onb-sex" required><option value="">bitte wählen</option><option value="w">weiblich</option><option value="m">männlich</option></select>
+      </label>
+      <label>Geburtsjahr<input type="number" id="onb-birth" inputmode="numeric" min="1920" max="2015" placeholder="z. B. 1985" required></label>
+    </div>
+    <div class="row2">
+      <label>Größe (cm)<input type="number" id="onb-height" inputmode="numeric" min="120" max="230" placeholder="z. B. 172" required></label>
+      <label>Gewicht heute (kg)<input type="number" id="onb-weight" inputmode="decimal" step="0.1" min="20" max="400" placeholder="z. B. 78,5" required></label>
+    </div>
+    <label>Aktivität im Alltag
+      <select id="onb-activity" required>
+        <option value="">bitte wählen</option>
+        <option value="1.2">Kaum aktiv (Bürojob, wenig Bewegung)</option>
+        <option value="1.375">Leicht aktiv (1–3× Sport pro Woche)</option>
+        <option value="1.55">Mäßig aktiv (3–5× Sport pro Woche)</option>
+        <option value="1.725">Sehr aktiv (6–7× Sport pro Woche)</option>
+        <option value="1.9">Extrem aktiv (körperliche Arbeit + Sport)</option>
+      </select>
+    </label>
+    <label>Abnehmtempo
+      <select id="onb-pace">
+        <option value="0">Gewicht halten</option>
+        <option value="0.25">0,25 kg pro Woche (sanft)</option>
+        <option value="0.5" selected>0,5 kg pro Woche (empfohlen)</option>
+        <option value="0.75">0,75 kg pro Woche (zügig)</option>
+        <option value="1">1 kg pro Woche (sehr ambitioniert)</option>
+      </select>
+    </label>
+    <div class="calc" id="onb-result"></div>
+    <label>Wasserziel pro Tag (ml)<input type="number" id="onb-water" inputmode="numeric" min="500" max="8000" step="50"></label>
+    <button class="btn primary" id="onb-save">Ziel übernehmen</button>
+    <button type="button" class="link" id="onb-later">Später</button>
+    <p class="err" id="onb-err"></p>
+  </form>
 </div>
 
 <!-- Feedback: Feature Request / Bug Report -->

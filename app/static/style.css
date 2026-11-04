@@ -340,3 +340,8 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .bug-meta { white-space: pre-wrap; word-break: break-word; font-size: .72rem; background: var(--bg);
   padding: 10px; border-radius: 10px; margin: 6px 0 0; color: var(--muted); }
 #admin-link { display: block; text-align: center; text-decoration: none; }
+
+/* Hinweis: Kalorienziel ist nur ein Beispielwert */
+.goal-hint { border: 2px solid var(--accent); background: var(--accent-soft); gap: 8px; }
+.goal-hint p { margin: 0; }
+.goal-hint .btn-row .btn { flex: 1; }

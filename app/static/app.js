@@ -96,6 +96,7 @@ async function initAuth() {
   if (cfg.version) {
     $("#app-version").textContent = `Bissfest v${cfg.version} · Mit Biss zum Wunschgewicht`;
     $("#settings-version").textContent = `Bissfest – Version ${cfg.version}`;
+    $("#auth-version").textContent = `Version ${cfg.version} · `;
   }
   if (!cfg.allow_registration) $("#auth-toggle").classList.add("hidden");
   // Android-App anbieten: nur im Android-Browser, nicht in der installierten App/PWA
@@ -123,14 +124,14 @@ async function initAuth() {
       if (state.registerMode) {
         const r = await api("/register", { method: "POST", body: { ...creds(), email: $("#auth-email").value.trim() } });
         $("#auth-toggle").click(); // zurück zur Anmeldung – nach dem Bestätigen geht es direkt los
-        showNotice("📬 Fast geschafft!", `Wir haben dir eine Mail an ${r.email} geschickt. Klicke auf den Link darin, um dein Konto zu bestätigen – danach bist du direkt angemeldet. Schau auch im Spam-Ordner nach.`, true);
+        showNotice("📬 Fast geschafft!", `Wir haben dir eine Mail an ${r.email} geschickt. Klicke auf den Link darin, um dein Konto zu bestätigen – danach bist du direkt angemeldet. Schau auch im Spam-Ordner nach.`, true, r.email);
         return;
       }
       await api("/login", { method: "POST", body: creds() });
       $("#auth-pass").value = "";
       await startApp();
     } catch (err) {
-      if (err.status === 403 && !state.registerMode) showNotice("📬 E-Mail noch nicht bestätigt", err.message, true);
+      if (err.status === 403 && !state.registerMode) showNotice("📬 E-Mail noch nicht bestätigt", err.message, true, err.message.match(/\S+@[^\s,]+[^\s.,]/)?.[0]);
       else $("#auth-err").textContent = err.message;
     }
   };
@@ -142,7 +143,24 @@ async function initAuth() {
     try {
       const r = await api("/resend-verification", { method: "POST", body: creds() });
       if (r.already) showNotice("✅ Schon bestätigt", "Deine E-Mail-Adresse ist bereits bestätigt – du kannst dich anmelden.", false);
-      else showNotice("📬 Neue Mail ist unterwegs", `Wir haben den Bestätigungslink erneut an ${r.email} geschickt.`, true);
+      else showNotice("📬 Neue Mail ist unterwegs", `Wir haben den Bestätigungslink erneut an ${r.email} geschickt.`, true, r.email);
+    } catch (err) { $("#auth-err").textContent = err.message; }
+  };
+  $("#auth-fix-open").onclick = () => {
+    $("#auth-fix-open").classList.add("hidden");
+    $("#auth-fix").classList.remove("hidden");
+    $("#auth-fix-email").focus();
+  };
+  $("#auth-fix").onsubmit = async (e) => {
+    e.preventDefault();
+    $("#auth-err").textContent = "";
+    if (!$("#auth-user").value.trim() || !$("#auth-pass").value) {
+      $("#auth-err").textContent = "Bitte oben Benutzername und Passwort eingeben, dann erneut senden.";
+      return;
+    }
+    try {
+      const r = await api("/correct-email", { method: "POST", body: { ...creds(), email: $("#auth-fix-email").value.trim() } });
+      showNotice("📬 Adresse korrigiert", `Wir haben einen neuen Bestätigungslink an ${r.email} geschickt. Der Link aus der vorherigen Mail gilt nicht mehr.`, true, r.email);
     } catch (err) { $("#auth-err").textContent = err.message; }
   };
   // Rückkehr vom Bestätigungslink (/verify leitet auf /?verified=1 bzw. 0 um)
@@ -154,10 +172,13 @@ async function initAuth() {
   }
 }
 
-function showNotice(title, text, resend) {
+function showNotice(title, text, resend, email = "") {
   $("#auth-notice-title").textContent = title;
   $("#auth-notice-text").textContent = text;
   $("#auth-resend").classList.toggle("hidden", !resend);
+  $("#auth-fix-open").classList.toggle("hidden", !resend);
+  $("#auth-fix").classList.add("hidden");
+  $("#auth-fix-email").value = email;
   $("#auth-notice").classList.remove("hidden");
 }
 
@@ -172,6 +193,7 @@ async function startApp() {
   fillSettings();
   refreshPush();
   await loadDay();
+  maybeStartOnboarding();
 }
 
 /* ------------------------------------------------------------ Tagesansicht */
@@ -193,6 +215,8 @@ async function loadDay() {
 
 function renderDay() {
   const d = state.data, u = state.user;
+  $("#goal-hint").classList.toggle("hidden", !needsGoalSetup());
+  $("#goal-hint-kcal").textContent = fmt(u.kcal_goal);
   const eaten = Math.round(d.totals.kcal);
   const left = u.kcal_goal - eaten;
   $("#kcal-eaten").textContent = fmt(eaten);
@@ -1242,6 +1266,99 @@ function initHomeAssistant() {
   };
 }
 
+/* ------------------------------------------------------------ Einrichtungs-Assistent (persönliches Kalorienziel) */
+
+// Hinweis/Assistent, solange kein persönliches Ziel berechnet werden kann und der Nutzer ihn nicht weggeklickt hat
+const needsGoalSetup = () => !energy(state.user) && !state.user.goal_hint_dismissed;
+const onbKey = () => `bissfest-onboarding-${state.user.username}`;
+
+function maybeStartOnboarding() {
+  if (!needsGoalSetup()) return;
+  try {
+    if (localStorage.getItem(onbKey())) return; // automatisch nur einmal pro Gerät, danach über die Hinweiskarte
+    localStorage.setItem(onbKey(), "1");
+  } catch { return; }
+  openOnboarding();
+}
+
+function onbProfile() {
+  const num = (id) => { const v = $(id).value.replace(",", "."); return v === "" ? null : parseFloat(v); };
+  return { sex: $("#onb-sex").value || null, birth_year: num("#onb-birth"), height_cm: num("#onb-height"),
+    activity: num("#onb-activity"), weekly_loss: num("#onb-pace"), latest_weight: num("#onb-weight") };
+}
+
+function renderOnboarding() {
+  const p = onbProfile(), e = energy(p);
+  // Wasser: Faustregel 35 ml pro kg, auf 50 ml gerundet (nur vorschlagen, solange nicht selbst geändert)
+  if (p.latest_weight && !$("#onb-water").dataset.touched) $("#onb-water").value = Math.round((p.latest_weight * 35) / 50) * 50;
+  const box = $("#onb-result");
+  if (!e) { box.innerHTML = `<div class="hint">Fülle alle Felder aus – dann siehst du hier dein Ziel.</div>`; return; }
+  box.innerHTML = `<div class="line"><span>Gesamtumsatz (mit Aktivität)</span><strong>${fmt(e.tdee)} kcal</strong></div>
+    <div class="line"><span>Tägliches Defizit</span><strong>${fmt(e.deficit)} kcal</strong></div>
+    <div class="line goal-line"><span>Dein Kalorienziel</span><strong>${fmt(e.goal)} kcal</strong></div>` +
+    (e.limit ? `<div class="note">Begrenzt (${e.limit}) – das entspricht ca. ${fmt(e.perWeek, 2)} kg pro Woche.</div>` : "");
+}
+
+function openOnboarding() {
+  const u = state.user;
+  $("#onb-sex").value = u.sex ?? "";
+  $("#onb-birth").value = u.birth_year ?? "";
+  $("#onb-height").value = u.height_cm ?? "";
+  $("#onb-weight").value = u.latest_weight ?? "";
+  $("#onb-activity").value = u.activity != null ? String(u.activity) : "";
+  $("#onb-pace").value = String(u.weekly_loss ?? 0.5);
+  $("#onb-water").value = u.water_goal_ml;
+  delete $("#onb-water").dataset.touched;
+  $("#onb-err").textContent = "";
+  renderOnboarding();
+  $("#onboarding").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+
+function closeOnboarding() {
+  $("#onboarding").classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
+function initOnboarding() {
+  ["#onb-sex", "#onb-birth", "#onb-height", "#onb-weight", "#onb-activity", "#onb-pace"].forEach((id) => ($(id).oninput = renderOnboarding));
+  $("#onb-water").oninput = () => ($("#onb-water").dataset.touched = "1");
+  $("#onb-close").onclick = closeOnboarding;
+  $("#onb-later").onclick = closeOnboarding;
+  $("#goal-hint-open").onclick = openOnboarding;
+  $("#goal-hint-dismiss").onclick = async () => {
+    if (!confirm(`Dein Kalorienziel von ${fmt(state.user.kcal_goal)} kcal beibehalten und den Hinweis nicht mehr anzeigen?`)) return;
+    await api("/goal-hint/dismiss", { method: "POST" }).catch(() => {});
+    state.user.goal_hint_dismissed = true;
+    renderDay();
+  };
+  $("#onb-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const p = onbProfile(), en = energy(p);
+    if (!en) return ($("#onb-err").textContent = "Bitte alle Felder ausfüllen.");
+    $("#onb-save").disabled = true;
+    try {
+      await api("/weight/" + localISO(new Date()), { method: "PUT", body: { kg: p.latest_weight } });
+      // Werte in die Einstellungs-Felder übernehmen und über den normalen Speichern-Weg sichern
+      $("#s-sex").value = p.sex;
+      $("#s-birth").value = p.birth_year;
+      $("#s-height").value = p.height_cm;
+      $("#s-activity").value = String(p.activity);
+      $("#s-pace").value = String(p.weekly_loss);
+      $("#s-kcal").value = en.goal;
+      $("#s-water").value = Math.round(+$("#onb-water").value) || state.user.water_goal_ml;
+      await saveSettings("#onb-err");
+      if (!energy(state.user)) throw new Error($("#onb-err").textContent || "Speichern fehlgeschlagen");
+      closeOnboarding();
+      toast(`Dein Ziel: ${fmt(en.goal)} kcal pro Tag 🎯`);
+    } catch (err) {
+      $("#onb-err").textContent = err.message;
+    } finally {
+      $("#onb-save").disabled = false;
+    }
+  };
+}
+
 /* ------------------------------------------------------------ Feature Request */
 
 const FEEDBACK_KINDS = {
@@ -1397,6 +1514,7 @@ function initNav() {
   initPush();
   initTheme();
   initFeedback();
+  initOnboarding();
   initHomeAssistant();
   initNav();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

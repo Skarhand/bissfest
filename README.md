@@ -151,6 +151,9 @@ docker compose start
 - Nährwertdaten: Open Food Facts (ODbL), USDA FoodData Central (Public Domain).
 
 ## Versionen
+- **2.4.2** – App-Version auf der Anmeldeseite
+- **2.4.1** – Tippfehler in der E-Mail-Adresse lässt sich vor der Bestätigung korrigieren
+- **2.4.0** – Einrichtungs-Assistent für das persönliche Kalorienziel, Hinweis solange nur Beispielwerte gesetzt sind
 - **2.3.0** – Admin-Dashboard unter /admin (Übersicht, Nutzer, Feedback, Lebensmittel, System, Registrierungsschalter)
 - **2.2.0** – „Fehler melden“: Bug Report mit Screenshot und technischen Angaben per Mail
 - **2.1.0** – REST-API `/api/v1` mit persönlichen Tokens für Home Assistant

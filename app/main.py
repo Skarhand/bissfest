@@ -50,7 +50,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.4.2"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -217,7 +217,9 @@ PROFILE_COLUMNS = {"sex": "TEXT", "birth_year": "INTEGER", "height_cm": "REAL", 
                    "email_verified": "INTEGER NOT NULL DEFAULT 1",
                    # Kaffee-Tracker (Extra, standardmäßig aus) und Koffein pro Tasse
                    "coffee_enabled": "INTEGER NOT NULL DEFAULT 0", "caffeine_mg": "INTEGER NOT NULL DEFAULT 80",
-                   "tea_enabled": "INTEGER NOT NULL DEFAULT 0", "tea_caffeine_mg": "INTEGER NOT NULL DEFAULT 40"}
+                   "tea_enabled": "INTEGER NOT NULL DEFAULT 0", "tea_caffeine_mg": "INTEGER NOT NULL DEFAULT 40",
+                   # 1 = Hinweis "Kalorienziel ist nur ein Beispielwert" bewusst ausgeblendet ("Mein Ziel passt so")
+                   "goal_hint_dismissed": "INTEGER NOT NULL DEFAULT 0"}
 # Später ergänzte Spalten für Einträge und Gericht-Zutaten: Zucker und die gewählte Portion ("2 × Scheibe")
 ENTRY_COLUMNS = {"sugar_100g": "REAL", "portion_name": "TEXT", "portion_count": "REAL"}
 # Kaffee-Größen in ml; das eingestellte Koffein (caffeine_mg) gilt für eine Tasse
@@ -370,6 +372,7 @@ def user_public(u: sqlite3.Row) -> dict:
         "reminders": json.loads(u["reminders"] or "{}"),
         "push_devices": push_device_count(u["id"]),
         "is_admin": is_admin(u),
+        "goal_hint_dismissed": bool(u["goal_hint_dismissed"]),
         "coffee_enabled": bool(u["coffee_enabled"]),
         "caffeine_mg": u["caffeine_mg"],
         "tea_enabled": bool(u["tea_enabled"]),
@@ -500,6 +503,34 @@ def resend_verification(creds: Credentials, request: Request):
     return {"ok": True, "email": u["email"]}
 
 
+class EmailCorrection(Credentials):
+    email: str = Field(max_length=200, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@app.post("/api/correct-email")
+def correct_email(c: EmailCorrection, request: Request):
+    """Tippfehler bei der Registrierung beheben: nur mit Passwort und nur für unbestätigte Konten.
+    send_verification() ersetzt dabei den alten Link, die Mail an die falsche Adresse wird also wertlos."""
+    throttle("fixmail:" + c.username.lower(), limit=5, window=3600)
+    with db() as conn:
+        u = conn.execute("SELECT * FROM users WHERE username = ?", (c.username,)).fetchone()
+    if not u or not hmac.compare_digest(u["pw_hash"], hash_pw(c.password, u["salt"])):
+        raise HTTPException(401, "Benutzername oder Passwort falsch")
+    if u["email_verified"]:
+        raise HTTPException(400, "Dieses Konto ist bereits bestätigt")
+    email = c.email.strip().lower()
+    with db() as conn:
+        if conn.execute("SELECT 1 FROM users WHERE email=? AND id!=?", (email, u["id"])).fetchone():
+            raise HTTPException(409, "Für diese E-Mail-Adresse gibt es schon ein Konto")
+        conn.execute("UPDATE users SET email=? WHERE id=?", (email, u["id"]))
+    try:
+        send_verification(request, u["id"], u["username"], email)
+    except Exception as e:
+        logging.getLogger("mail").error("Bestätigungsmail an %s fehlgeschlagen: %s", email, e)
+        raise HTTPException(502, "Die Mail konnte nicht verschickt werden. Bitte später erneut versuchen.")
+    return {"ok": True, "email": email}
+
+
 @app.get("/verify")
 def verify_email(token: str = ""):
     """Link aus der Bestätigungsmail: Konto freischalten und direkt anmelden."""
@@ -590,6 +621,14 @@ def save_settings(s: Settings, u=Depends(current_user)):
         )
         u = conn.execute("SELECT * FROM users WHERE id=?", (u["id"],)).fetchone()
     return user_public(u)
+
+
+@app.post("/api/goal-hint/dismiss")
+def dismiss_goal_hint(u=Depends(current_user)):
+    """Nutzer behält sein Kalorienziel bewusst ohne Berechnung – Hinweis nicht mehr anzeigen."""
+    with db() as conn:
+        conn.execute("UPDATE users SET goal_hint_dismissed=1 WHERE id=?", (u["id"],))
+    return {"ok": True}
 
 
 class PasswordChange(BaseModel):
