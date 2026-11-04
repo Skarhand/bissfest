@@ -54,9 +54,26 @@ bissfest.example.de {
 | `VAPID_SUBJECT` | `mailto:abnehm-app@example.org` | Kontaktadresse für Push-Dienste |
 | `DONATE_WERO_URL` | – | Wero-Link für „Spendier mir einen Kaffee“ (QR-Code: `app/static/wero-qr.png`), leer = Karte aus |
 | `FEEDBACK_TO` | `service@facgooder.de` | Empfänger für Feature Requests aus der App |
+| `ANDROID_PACKAGE` / `ANDROID_CERT_SHA256` | – | Paketname und Zertifikats-Fingerabdruck der Android-App (assetlinks.json) |
 | `BACKUP_TIME` | `03:00` | Uhrzeit der nächtlichen Sicherung, leer = aus |
 | `BACKUP_KEEP_DAYS` | `30` | Aufbewahrungsdauer der Backups |
 | `OFF_COUNTRY` | `de` | Länder-Subdomain für die Open-Food-Facts-Fallback-Suche |
+
+## Android-App (APK)
+Die Android-App ist eine Trusted Web Activity: eine echte App mit eigenem Symbol, die Bissfest von
+https://bissfest.facgooder.de im Vollbild lädt. Web-Updates kommen daher automatisch in der App an; eine neue APK
+ist nur nötig, wenn sich Name, Icon, Domain oder Android-Einstellungen ändern.
+
+Bauen (JDK 17, Android SDK mit `platforms;android-36` und `build-tools;36.1.0`):
+```bash
+cd android && npm install && npm run build      # -> android/dist/bissfest-<version>.apk
+```
+Der Signaturschlüssel liegt **außerhalb des Repos** in `../android-signing/` (Keystore + Passwort, nicht verlieren –
+sonst lassen sich Updates nicht mehr installieren). Version und `VERSION_CODE` stehen in `android/build-apk.mjs`.
+
+Veröffentlichen: APK als `data/downloads/bissfest.apk` auf den Server legen – Android-Nutzer sehen dann in den
+Einstellungen „Android-App herunterladen“. `/.well-known/assetlinks.json` (aus `ANDROID_PACKAGE` und
+`ANDROID_CERT_SHA256`) bestätigt, dass die App zur Domain gehört; ohne sie zeigt Android eine Adressleiste.
 
 ## Registrierung mit E-Mail-Bestätigung
 Neue Konten brauchen eine E-Mail-Adresse. Bissfest schickt einen Bestätigungslink (24 Stunden gültig);
@@ -115,6 +132,7 @@ docker compose start
 - Nährwertdaten: Open Food Facts (ODbL), USDA FoodData Central (Public Domain).
 
 ## Versionen
+- **2.0.0** – Echte Android-App (APK, Trusted Web Activity), Download in der App, assetlinks.json
 - **1.17.0** – Feature Request aus der App per Mail an service@facgooder.de (zusätzlich gespeichert)
 - **1.16.1** – Spenden nur noch per Wero (PayPal entfernt)
 - **1.16.0** – „Spendier mir einen Kaffee“ mit Wero (Link + QR-Code), PayPal vorbereitet

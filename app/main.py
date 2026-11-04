@@ -34,6 +34,11 @@ PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 VERIFY_HOURS = 24
 # "Spendier mir einen Kaffee": Wero-Bezahllink (leer = Karte ausgeblendet)
 DONATE_WERO_URL = os.environ.get("DONATE_WERO_URL", "")
+# Android-App (Trusted Web Activity): Paketname + SHA-256 des Signaturzertifikats für assetlinks.json,
+# die APK selbst liegt im Datenordner (nicht im Image/git) und wird unter /download/bissfest.apk angeboten
+ANDROID_PACKAGE = os.environ.get("ANDROID_PACKAGE", "")
+ANDROID_CERT_SHA256 = os.environ.get("ANDROID_CERT_SHA256", "")
+APK_PATH = Path(DB_PATH).parent / "downloads" / "bissfest.apk"
 # Empfänger für Feature Requests aus der App
 FEEDBACK_TO = os.environ.get("FEEDBACK_TO", "service@facgooder.de")
 UNVERIFIED_KEEP_DAYS = 7
@@ -41,7 +46,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "1.17.0"
+APP_VERSION = "2.0.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -363,7 +368,7 @@ class Credentials(BaseModel):
 @app.get("/api/config")
 def config():
     return {"allow_registration": ALLOW_REGISTRATION and mailer.configured(), "version": APP_VERSION,
-            "donate_wero": DONATE_WERO_URL}
+            "donate_wero": DONATE_WERO_URL, "android_apk": APK_PATH.exists()}
 
 
 class RegisterIn(Credentials):
@@ -1227,6 +1232,24 @@ def index():
     # __V__ = App-Version an CSS/JS-Adressen: nach jedem Update lädt der Browser sie garantiert neu
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8").replace("__V__", APP_VERSION)
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/.well-known/assetlinks.json")
+def assetlinks():
+    """Digital Asset Links: bestätigt Android, dass die Bissfest-App zu dieser Domain gehört (Vollbild ohne Adressleiste)."""
+    if not (ANDROID_PACKAGE and ANDROID_CERT_SHA256):
+        raise HTTPException(404)
+    return [{"relation": ["delegate_permission/common.handle_all_urls"],
+             "target": {"namespace": "android_app", "package_name": ANDROID_PACKAGE,
+                        "sha256_cert_fingerprints": [ANDROID_CERT_SHA256]}}]
+
+
+@app.get("/download/bissfest.apk")
+def download_apk():
+    if not APK_PATH.exists():
+        raise HTTPException(404, "Die Android-App ist noch nicht hinterlegt")
+    return FileResponse(APK_PATH, media_type="application/vnd.android.package-archive",
+                        filename=f"bissfest-{APP_VERSION}.apk", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/sw.js")

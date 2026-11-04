@@ -5,3 +5,4 @@ data/
 .gitignore
 .env
 .env.example
+android/

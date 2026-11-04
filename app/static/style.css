@@ -307,6 +307,7 @@ label .search-row .btn { padding: 0 14px; font-size: 1.2rem; }
 .switch-row input[type=checkbox]:checked::after { transform: translateX(20px); }
 
 /* Spendier mir einen Kaffee */
+#android-download { display: block; text-align: center; text-decoration: none; }
 .donate-wero { display: block; text-align: center; text-decoration: none; padding: 14px; background: #fff48d; color: #1d1d1b; }
 .donate-wero b { font-weight: 800; letter-spacing: -.5px; }
 .donate-qr summary { cursor: pointer; color: var(--accent); font-size: .9rem; }
