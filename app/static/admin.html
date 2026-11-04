@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#fbf7ef">
+  <script>
+    try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+  <title>Bissfest Admin</title>
+  <link rel="icon" href="/static/favicon-64.png" type="image/png">
+  <link rel="stylesheet" href="/static/style.css?v=__V__">
+  <link rel="stylesheet" href="/static/admin.css?v=__V__">
+</head>
+<body class="admin">
+
+<header class="admin-top">
+  <a href="/" class="admin-brand"><img src="/static/favicon-64.png" alt=""><span>Bissfest <b>Admin</b></span></a>
+  <nav class="admin-nav" id="admin-nav">
+    <button data-tab="overview" class="active">📊 Übersicht</button>
+    <button data-tab="users">👥 Nutzer</button>
+    <button data-tab="feedback">💬 Feedback <span class="badge hidden" id="badge-feedback"></span></button>
+    <button data-tab="foods">🥫 Lebensmittel</button>
+    <button data-tab="system">⚙️ System</button>
+  </nav>
+  <a href="/" class="admin-back">‹ Zur App</a>
+</header>
+
+<main class="admin-main">
+  <div class="card notice hidden" id="admin-denied">
+    <strong id="denied-title"></strong>
+    <p class="muted" id="denied-text"></p>
+    <a class="btn primary" href="/">Zu Bissfest</a>
+  </div>
+
+  <section class="admin-tab" id="tab-overview">
+    <div class="kpis" id="kpis"></div>
+    <div class="card">
+      <div class="card-head"><h2>Aktivität (Mahlzeiten-Einträge)</h2>
+        <select id="activity-range"><option value="30">30 Tage</option><option value="90">90 Tage</option></select>
+      </div>
+      <div class="chart" id="activity-chart"></div>
+      <p class="muted tiny">Balken: Einträge pro Tag · Linie: Nutzer, die an dem Tag etwas eingetragen haben.</p>
+    </div>
+  </section>
+
+  <section class="admin-tab hidden" id="tab-users">
+    <div class="card">
+      <div class="card-head"><h2>Nutzer</h2><span class="muted tiny" id="users-count"></span></div>
+      <p class="muted tiny">Aus Datenschutzgründen nur Konto- und Aktivitätsdaten – keine Mahlzeiten, Gewichte oder Körperdaten.</p>
+      <div class="table-wrap"><table class="admin-table" id="users-table"></table></div>
+    </div>
+  </section>
+
+  <section class="admin-tab hidden" id="tab-feedback">
+    <div class="card">
+      <div class="card-head"><h2>Feedback</h2>
+        <div class="seg small" id="feedback-filter">
+          <button data-f="offen" class="active">Offen</button>
+          <button data-f="bug">🐞 Bugs</button>
+          <button data-f="feature">💡 Ideen</button>
+          <button data-f="alle">Alle</button>
+        </div>
+      </div>
+      <div class="feedback-list" id="feedback-list"></div>
+    </div>
+  </section>
+
+  <section class="admin-tab hidden" id="tab-foods">
+    <div class="card">
+      <div class="card-head"><h2>Bissfest-Lebensmitteldatenbank</h2><span class="muted tiny" id="foods-count"></span></div>
+      <input type="search" id="foods-search" placeholder="Filtern nach Name, Marke, Hersteller, Barcode …">
+      <div class="table-wrap"><table class="admin-table" id="foods-table"></table></div>
+    </div>
+  </section>
+
+  <section class="admin-tab hidden" id="tab-system">
+    <div class="card form">
+      <h2>Registrierung</h2>
+      <label class="switch-row">
+        <span><strong>Neue Konten zulassen</strong><br><span class="muted tiny" id="reg-hint"></span></span>
+        <input type="checkbox" id="reg-switch" role="switch">
+      </label>
+    </div>
+    <div class="card">
+      <h2>Status</h2>
+      <dl class="sysinfo" id="sysinfo"></dl>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/static/admin.js?v=__V__"></script>
+</body>
+</html>

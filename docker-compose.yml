@@ -28,6 +28,8 @@ services:
       ANDROID_CERT_SHA256: "6E:84:21:EC:C2:27:3B:9C:4F:24:CD:2D:5F:2B:C9:B9:55:C7:96:4C:5E:3D:BA:91:1A:35:11:10:A8:13:27:3E"
       # Nach dem Anlegen aller Konten auf "false" setzen, damit sich niemand Fremdes registriert
       ALLOW_REGISTRATION: "true"
+      # Admins für https://…/admin (Benutzernamen, kommagetrennt)
+      ADMIN_USERS: "sebastian"
       # App läuft hinter HTTPS (https://bissfest.facgooder.de) – Login-Cookie nur über HTTPS senden
       COOKIE_SECURE: "true"
       # Kostenloser Key: https://fdc.nal.usda.gov/api-key-signup  (DEMO_KEY = stark limitiert, leer = USDA aus)

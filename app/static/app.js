@@ -950,6 +950,7 @@ const MEAL_NAMES = ["Frühstück", "Mittagessen", "Abendessen", "Snack 1", "Snac
 function fillSettings() {
   const u = state.user;
   $("#s-user").textContent = u.username;
+  $("#admin-link").classList.toggle("hidden", !u.is_admin);
   $("#s-kcal").value = u.kcal_goal;
   $("#s-water").value = u.water_goal_ml;
   $("#s-target").value = u.target_weight ?? "";

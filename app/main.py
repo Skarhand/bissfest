@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import secrets
+import shutil
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -27,6 +28,8 @@ import push
 
 DB_PATH = os.environ.get("DB_PATH", "/data/abnehm.db")
 ALLOW_REGISTRATION = os.environ.get("ALLOW_REGISTRATION", "true").lower() == "true"
+# Admins für /admin (Benutzernamen, kommagetrennt) – bewusst nur per Konfiguration, nicht über die Oberfläche
+ADMIN_USERS = {n.strip().lower() for n in os.environ.get("ADMIN_USERS", "").split(",") if n.strip()}
 FDC_API_KEY = os.environ.get("FDC_API_KEY", "DEMO_KEY")  # USDA FoodData Central, leer = aus
 OFF_COUNTRY = os.environ.get("OFF_COUNTRY", "de")
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
@@ -47,7 +50,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -184,6 +187,10 @@ CREATE TABLE IF NOT EXISTS feedback (
     mailed INTEGER NOT NULL DEFAULT 0,
     created INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS api_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -280,7 +287,8 @@ def init_db():
                                  [(r["user_id"], r["day"], COFFEE_SIZES["cup"], 0)] * r["cups"])
             conn.execute("DROP TABLE coffee")
         have = {r["name"] for r in conn.execute("PRAGMA table_info(feedback)")}
-        for col, typ in (("kind", "TEXT NOT NULL DEFAULT 'feature'"), ("meta", "TEXT"), ("attachment", "TEXT")):
+        for col, typ in (("kind", "TEXT NOT NULL DEFAULT 'feature'"), ("meta", "TEXT"), ("attachment", "TEXT"),
+                         ("status", "TEXT NOT NULL DEFAULT 'offen'")):
             if col not in have:
                 conn.execute(f"ALTER TABLE feedback ADD COLUMN {col} {typ}")
         if "kind" not in {r["name"] for r in conn.execute("PRAGMA table_info(coffee_entries)")}:
@@ -361,6 +369,7 @@ def user_public(u: sqlite3.Row) -> dict:
         "latest_weight": latest_weight(u["id"]),
         "reminders": json.loads(u["reminders"] or "{}"),
         "push_devices": push_device_count(u["id"]),
+        "is_admin": is_admin(u),
         "coffee_enabled": bool(u["coffee_enabled"]),
         "caffeine_mg": u["caffeine_mg"],
         "tea_enabled": bool(u["tea_enabled"]),
@@ -379,9 +388,24 @@ class Credentials(BaseModel):
     password: str = Field(min_length=8, max_length=200)
 
 
+def get_setting(key: str, default: str) -> str:
+    with db() as conn:
+        row = conn.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def registration_open() -> bool:
+    """Registrierung: per Konfiguration erlaubt, im Admin-Dashboard nicht gesperrt und Mailversand eingerichtet."""
+    return ALLOW_REGISTRATION and get_setting("registration_open", "1") == "1" and mailer.configured()
+
+
+def is_admin(u: sqlite3.Row) -> bool:
+    return u["username"].lower() in ADMIN_USERS
+
+
 @app.get("/api/config")
 def config():
-    return {"allow_registration": ALLOW_REGISTRATION and mailer.configured(), "version": APP_VERSION,
+    return {"allow_registration": registration_open(), "version": APP_VERSION,
             "donate_wero": DONATE_WERO_URL, "android_apk": APK_PATH.exists()}
 
 
@@ -429,7 +453,7 @@ def send_verification(request: Request, user_id: int, username: str, email: str)
 
 @app.post("/api/register")
 def register(creds: RegisterIn, request: Request):
-    if not ALLOW_REGISTRATION:
+    if not ALLOW_REGISTRATION or get_setting("registration_open", "1") != "1":
         raise HTTPException(403, "Registrierung ist deaktiviert")
     if not mailer.configured():
         raise HTTPException(503, "Registrierung ist gerade nicht möglich: Der E-Mail-Versand ist noch nicht eingerichtet.")
@@ -1352,6 +1376,207 @@ def send_feedback(f: FeedbackIn, u=Depends(current_user)):
     return {"id": fid, "mailed": mailed}
 
 
+# ---------------------------------------------------------------- Admin-Dashboard (/admin)
+# Zeigt bewusst nur Anzahlen und Aktivität – keine Ernährungstagebücher, Gewichte oder Körperdaten.
+
+def admin_user(u=Depends(current_user)) -> sqlite3.Row:
+    if not is_admin(u):
+        raise HTTPException(403, "Nur für Admins")
+    return u
+
+
+def _ago(days: int) -> str:
+    return (date.today() - timedelta(days=days)).isoformat()
+
+
+@app.get("/api/admin/overview")
+def admin_overview(a=Depends(admin_user)):
+    today = date.today().isoformat()
+    with db() as conn:
+        one = lambda sql, *args: conn.execute(sql, args).fetchone()[0]
+        active7 = one("""SELECT COUNT(DISTINCT user_id) FROM (
+                           SELECT user_id FROM food_entries WHERE day >= ? UNION
+                           SELECT user_id FROM water_entries WHERE day >= ? UNION
+                           SELECT user_id FROM coffee_entries WHERE day >= ? UNION
+                           SELECT user_id FROM weights WHERE day >= ?)""", *[_ago(6)] * 4)
+        return {
+            "users": one("SELECT COUNT(*) FROM users"),
+            "users_verified": one("SELECT COUNT(*) FROM users WHERE email_verified=1"),
+            "users_active_7d": active7,
+            "users_new_7d": one("SELECT COUNT(*) FROM users WHERE created >= ?", int(time.time()) - 7 * 86400),
+            "entries_today": one("SELECT COUNT(*) FROM food_entries WHERE day=?", today),
+            "entries_total": one("SELECT COUNT(*) FROM food_entries"),
+            "feedback_open": one("SELECT COUNT(*) FROM feedback WHERE status='offen'"),
+            "bugs_open": one("SELECT COUNT(*) FROM feedback WHERE status='offen' AND kind='bug'"),
+            "custom_foods": one("SELECT COUNT(*) FROM custom_foods"),
+            "templates": one("SELECT COUNT(*) FROM meal_templates"),
+            "push_devices": one("SELECT COUNT(*) FROM push_subscriptions"),
+            "api_tokens": one("SELECT COUNT(*) FROM api_tokens"),
+        }
+
+
+@app.get("/api/admin/activity")
+def admin_activity(days: int = 30, a=Depends(admin_user)):
+    days = max(7, min(days, 365))
+    with db() as conn:
+        rows = conn.execute("""SELECT day, COUNT(*) AS entries, COUNT(DISTINCT user_id) AS users
+                               FROM food_entries WHERE day >= ? AND day <= ? GROUP BY day ORDER BY day""",
+                            (_ago(days - 1), date.today().isoformat())).fetchall()
+    return {"days": days, "rows": [dict(r) for r in rows]}
+
+
+@app.get("/api/admin/users")
+def admin_users(a=Depends(admin_user)):
+    with db() as conn:
+        rows = conn.execute("""
+            SELECT u.id, u.username, u.email, u.email_verified, u.created,
+                   (SELECT COUNT(*) FROM food_entries f WHERE f.user_id = u.id) AS entries,
+                   MAX(COALESCE((SELECT MAX(created) FROM food_entries f WHERE f.user_id = u.id), 0),
+                       COALESCE((SELECT MAX(created) FROM water_entries w WHERE w.user_id = u.id), 0),
+                       COALESCE((SELECT MAX(created) FROM coffee_entries c WHERE c.user_id = u.id), 0)) AS last_active,
+                   (SELECT COUNT(*) FROM push_subscriptions p WHERE p.user_id = u.id) AS push_devices,
+                   (SELECT COUNT(*) FROM api_tokens t WHERE t.user_id = u.id) AS api_tokens
+            FROM users u ORDER BY u.created""").fetchall()
+    return [{**dict(r), "last_active": r["last_active"] or None, "is_admin": r["username"].lower() in ADMIN_USERS}
+            for r in rows]
+
+
+def _target_user(user_id: int) -> sqlite3.Row:
+    with db() as conn:
+        u = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    if not u:
+        raise HTTPException(404, "Benutzer nicht gefunden")
+    return u
+
+
+@app.post("/api/admin/users/{user_id}/verify")
+def admin_verify_user(user_id: int, a=Depends(admin_user)):
+    _target_user(user_id)
+    with db() as conn:
+        conn.execute("UPDATE users SET email_verified=1 WHERE id=?", (user_id,))
+        conn.execute("DELETE FROM email_tokens WHERE user_id=? AND purpose='verify'", (user_id,))
+    return {"ok": True}
+
+
+@app.post("/api/admin/users/{user_id}/resend")
+def admin_resend(user_id: int, request: Request, a=Depends(admin_user)):
+    u = _target_user(user_id)
+    if u["email_verified"]:
+        raise HTTPException(400, "Konto ist bereits bestätigt")
+    if not u["email"]:
+        raise HTTPException(400, "Keine E-Mail-Adresse hinterlegt")
+    try:
+        send_verification(request, u["id"], u["username"], u["email"])
+    except Exception as e:
+        raise HTTPException(502, f"Mail konnte nicht verschickt werden: {e}")
+    return {"ok": True}
+
+
+@app.delete("/api/admin/users/{user_id}")
+def admin_delete_user(user_id: int, a=Depends(admin_user)):
+    """Konto mit allen Einträgen löschen. Gemeinsame Lebensmittel bleiben (ohne Ersteller) erhalten."""
+    if user_id == a["id"]:
+        raise HTTPException(400, "Das eigene Konto kann hier nicht gelöscht werden")
+    u = _target_user(user_id)
+    with db() as conn:
+        conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    logging.getLogger("admin").info("Konto %s (#%s) gelöscht von %s", u["username"], user_id, a["username"])
+    return {"ok": True}
+
+
+@app.get("/api/admin/feedback")
+def admin_feedback(a=Depends(admin_user)):
+    with db() as conn:
+        rows = conn.execute("""SELECT f.id, f.kind, f.text, f.meta, f.attachment, f.status, f.mailed, f.created,
+                                      u.username, u.email
+                               FROM feedback f LEFT JOIN users u ON u.id = f.user_id ORDER BY f.id DESC""").fetchall()
+    return [{**dict(r), "meta": json.loads(r["meta"]) if r["meta"] else None, "has_screenshot": bool(r["attachment"])}
+            for r in rows]
+
+
+class FeedbackStatus(BaseModel):
+    status: Literal["offen", "erledigt"]
+
+
+@app.patch("/api/admin/feedback/{fid}")
+def admin_feedback_status(fid: int, s: FeedbackStatus, a=Depends(admin_user)):
+    with db() as conn:
+        cur = conn.execute("UPDATE feedback SET status=? WHERE id=?", (s.status, fid))
+    if not cur.rowcount:
+        raise HTTPException(404, "Rückmeldung nicht gefunden")
+    return {"ok": True}
+
+
+@app.get("/api/admin/feedback/{fid}/screenshot")
+def admin_feedback_screenshot(fid: int, a=Depends(admin_user)):
+    with db() as conn:
+        row = conn.execute("SELECT attachment FROM feedback WHERE id=?", (fid,)).fetchone()
+    path = (Path(DB_PATH).parent / row["attachment"]) if row and row["attachment"] else None
+    if not path or not path.is_file():
+        raise HTTPException(404, "Kein Screenshot vorhanden")
+    return FileResponse(path, headers={"Cache-Control": "private, max-age=3600"})
+
+
+@app.get("/api/admin/foods")
+def admin_foods(a=Depends(admin_user)):
+    with db() as conn:
+        rows = conn.execute("""
+            SELECT c.id, c.name, c.manufacturer, c.brand, c.code, c.kcal_100g, c.created, u.username AS created_by,
+                   (SELECT COUNT(*) FROM food_entries f WHERE f.source = 'Bissfest-DB'
+                      AND (f.code = 'custom:' || c.id OR (c.code != '' AND f.code = c.code))) AS uses
+            FROM custom_foods c LEFT JOIN users u ON u.id = c.created_by ORDER BY c.name COLLATE NOCASE""").fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.delete("/api/admin/foods/{food_id}")
+def admin_delete_food(food_id: int, a=Depends(admin_user)):
+    """Aus der gemeinsamen Datenbank entfernen; bereits eingetragene Mahlzeiten bleiben unverändert."""
+    with db() as conn:
+        cur = conn.execute("DELETE FROM custom_foods WHERE id=?", (food_id,))
+    if not cur.rowcount:
+        raise HTTPException(404, "Lebensmittel nicht gefunden")
+    return {"ok": True}
+
+
+@app.get("/api/admin/system")
+def admin_system(a=Depends(admin_user)):
+    data_dir = Path(DB_PATH).parent
+    disk = shutil.disk_usage(data_dir)
+    last_backup = None
+    status_file = backup.BACKUP_DIR / "letztes-backup.txt"
+    try:
+        if status_file.exists():
+            last_backup = status_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+    return {
+        "version": APP_VERSION,
+        "registration": {"configured": ALLOW_REGISTRATION, "switch": get_setting("registration_open", "1") == "1",
+                         "mail": mailer.configured(), "open": registration_open()},
+        "mail_from": mailer.SMTP_FROM or None,
+        "feedback_to": FEEDBACK_TO,
+        "backup": {"time": backup.BACKUP_TIME or None, "keep_days": backup.BACKUP_KEEP_DAYS, "last": last_backup,
+                   "target_ok": (backup.BACKUP_DIR / backup.MARKER).exists()},
+        "db_bytes": Path(DB_PATH).stat().st_size if Path(DB_PATH).exists() else 0,
+        "disk_free_bytes": disk.free, "disk_total_bytes": disk.total,
+        "push_configured": push.KEY_FILE.exists(),
+        "android_apk": APK_PATH.exists(),
+        "admins": sorted(ADMIN_USERS),
+    }
+
+
+class RegistrationSwitch(BaseModel):
+    open: bool
+
+
+@app.put("/api/admin/registration")
+def admin_registration(r: RegistrationSwitch, a=Depends(admin_user)):
+    with db() as conn:
+        conn.execute("INSERT INTO app_settings (key, value) VALUES ('registration_open', ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value", ("1" if r.open else "0",))
+    return admin_system(a)
+
+
 # ---------------------------------------------------------------- Push-Erinnerungen
 
 def push_device_count(user_id: int) -> int:
@@ -1436,6 +1661,12 @@ def push_test(u=Depends(current_user)):
 def index():
     # __V__ = App-Version an CSS/JS-Adressen: nach jedem Update lädt der Browser sie garantiert neu
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8").replace("__V__", APP_VERSION)
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/admin")
+def admin_page():
+    html = (STATIC_DIR / "admin.html").read_text(encoding="utf-8").replace("__V__", APP_VERSION)
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 

@@ -339,3 +339,4 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .shot-preview img { max-width: 100%; max-height: 220px; border-radius: 12px; border: 1px solid var(--line); }
 .bug-meta { white-space: pre-wrap; word-break: break-word; font-size: .72rem; background: var(--bg);
   padding: 10px; border-radius: 10px; margin: 6px 0 0; color: var(--muted); }
+#admin-link { display: block; text-align: center; text-decoration: none; }

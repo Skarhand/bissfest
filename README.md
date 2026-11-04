@@ -55,9 +55,22 @@ bissfest.example.de {
 | `DONATE_WERO_URL` | – | Wero-Link für „Spendier mir einen Kaffee“ (QR-Code: `app/static/wero-qr.png`), leer = Karte aus |
 | `FEEDBACK_TO` | `service@facgooder.de` | Empfänger für Feature Requests aus der App |
 | `ANDROID_PACKAGE` / `ANDROID_CERT_SHA256` | – | Paketname und Zertifikats-Fingerabdruck der Android-App (assetlinks.json) |
+| `ADMIN_USERS` | – | Benutzernamen mit Zugriff auf `/admin` (kommagetrennt) |
 | `BACKUP_TIME` | `03:00` | Uhrzeit der nächtlichen Sicherung, leer = aus |
 | `BACKUP_KEEP_DAYS` | `30` | Aufbewahrungsdauer der Backups |
 | `OFF_COUNTRY` | `de` | Länder-Subdomain für die Open-Food-Facts-Fallback-Suche |
+
+## Admin-Dashboard
+Unter **`/admin`** (z. B. https://bissfest.facgooder.de/admin) für alle Benutzer aus `ADMIN_USERS`
+(in der `docker-compose.yml`, kommagetrennt). Anmeldung mit dem normalen Bissfest-Konto.
+
+- **Übersicht:** Nutzer, Aktivität, Einträge, offenes Feedback, Diagramm der letzten 30/90 Tage
+- **Nutzer:** Konten mit letzter Aktivität; Bestätigungsmail erneut senden, manuell bestätigen, löschen
+- **Feedback:** Ideen und Bug Reports mit Screenshot und technischen Angaben, als erledigt markieren, antworten
+- **Lebensmittel:** gemeinsame Bissfest-Datenbank mit Nutzungshäufigkeit, Einträge löschen
+- **System:** Backup-, Mail-, Speicher- und Push-Status; Registrierung ohne Neustart öffnen/sperren
+
+Aus Datenschutzgründen zeigt das Dashboard keine Mahlzeiten, Gewichte oder Körperdaten anderer Nutzer.
 
 ## Home Assistant
 Bissfest hat eine REST-API (`/api/v1`) für Home Assistant und andere Werkzeuge. Token erzeugen unter
@@ -138,6 +151,7 @@ docker compose start
 - Nährwertdaten: Open Food Facts (ODbL), USDA FoodData Central (Public Domain).
 
 ## Versionen
+- **2.3.0** – Admin-Dashboard unter /admin (Übersicht, Nutzer, Feedback, Lebensmittel, System, Registrierungsschalter)
 - **2.2.0** – „Fehler melden“: Bug Report mit Screenshot und technischen Angaben per Mail
 - **2.1.0** – REST-API `/api/v1` mit persönlichen Tokens für Home Assistant
 - **2.0.0** – Echte Android-App (APK, Trusted Web Activity), Download in der App, assetlinks.json
