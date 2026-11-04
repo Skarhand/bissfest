@@ -1181,6 +1181,45 @@ function initTheme() {
   darkQuery.addEventListener("change", () => { if (getTheme() === "system") applyTheme("system"); });
 }
 
+/* ------------------------------------------------------------ Feature Request */
+
+function closeFeedback() {
+  $("#feedback-dialog").classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
+function initFeedback() {
+  const text = $("#feedback-text"), count = () => ($("#feedback-count").textContent = `${text.value.length} / 2000`);
+  $("#feedback-open").onclick = () => {
+    $("#feedback-err").textContent = "";
+    $("#feedback-reply").textContent = state.user.email
+      ? `Antworten kommen an ${state.user.email}.`
+      : "Du hast keine E-Mail-Adresse hinterlegt – wir können dir daher nicht direkt antworten.";
+    $("#feedback-dialog").classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+    count();
+    setTimeout(() => text.focus(), 50);
+  };
+  $("#feedback-close").onclick = closeFeedback;
+  $("#feedback-dialog").onclick = (e) => { if (e.target.id === "feedback-dialog") closeFeedback(); };
+  text.oninput = count;
+  $("#feedback-form").onsubmit = async (e) => {
+    e.preventDefault();
+    $("#feedback-err").textContent = "";
+    $("#feedback-send").disabled = true;
+    try {
+      await api("/feedback", { method: "POST", body: { text: text.value.trim() } });
+      text.value = "";
+      closeFeedback();
+      toast("Danke! Deine Idee ist angekommen 💡");
+    } catch (err) {
+      $("#feedback-err").textContent = err.message;
+    } finally {
+      $("#feedback-send").disabled = false;
+    }
+  };
+}
+
 /* ------------------------------------------------------------ Navigation */
 
 const SUBVIEW_TAB = { body: "settings" };
@@ -1216,6 +1255,7 @@ function initNav() {
   initSettings();
   initPush();
   initTheme();
+  initFeedback();
   initNav();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
   try { await startApp(); } catch { showAuth(); }

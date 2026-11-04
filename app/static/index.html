@@ -203,6 +203,11 @@
       <button class="btn">Ändern</button>
       <p class="ok" id="pw-msg"></p>
     </form>
+    <div class="card form" id="feedback-card">
+      <h2>💡 Feature Request</h2>
+      <p class="muted tiny">Dir fehlt etwas oder du hast eine Idee, wie Bissfest besser wird? Schreib sie uns.</p>
+      <button type="button" class="btn" id="feedback-open">Idee vorschlagen</button>
+    </div>
     <div class="card form hidden" id="donate-card">
       <h2>☕ Spendier mir einen Kaffee</h2>
       <p class="muted tiny">Bissfest ist kostenlos und werbefrei. Wenn dir die App hilft, freue ich mich über einen
@@ -388,6 +393,21 @@
       <button type="button" class="link" id="a-back">‹ Zurück zur Auswahl</button>
     </form>
   </div>
+</div>
+
+<!-- Feature Request -->
+<div id="feedback-dialog" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
+  <form class="sheet-panel compact form" id="feedback-form">
+    <div class="sheet-head">
+      <h2 id="feedback-title">💡 Feature Request</h2>
+      <button type="button" class="icon-btn" id="feedback-close" aria-label="Schließen">✕</button>
+    </div>
+    <p class="muted tiny">Beschreibe kurz, was du dir wünschst oder was dir aufgefallen ist. <span id="feedback-reply"></span></p>
+    <textarea id="feedback-text" rows="7" minlength="5" maxlength="2000" required placeholder="z. B. Ich hätte gern …"></textarea>
+    <div class="muted tiny counter" id="feedback-count">0 / 2000</div>
+    <button class="btn primary" id="feedback-send">Absenden</button>
+    <p class="err" id="feedback-err"></p>
+  </form>
 </div>
 
 <datalist id="portion-names">

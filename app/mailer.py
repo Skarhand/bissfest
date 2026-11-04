@@ -21,11 +21,13 @@ def configured() -> bool:
     return bool(SMTP_HOST and SMTP_FROM)
 
 
-def send(to: str, subject: str, text: str, html: str | None = None):
+def send(to: str, subject: str, text: str, html: str | None = None, reply_to: str | None = None):
     msg = EmailMessage()
     msg["From"] = formataddr((SMTP_FROM_NAME, SMTP_FROM))
     msg["To"] = to
     msg["Subject"] = subject
+    if reply_to:
+        msg["Reply-To"] = reply_to
     msg["Message-ID"] = make_msgid(domain=SMTP_FROM.split("@")[-1] or None)
     msg.set_content(text)
     if html:

@@ -34,12 +34,14 @@ PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 VERIFY_HOURS = 24
 # "Spendier mir einen Kaffee": Wero-Bezahllink (leer = Karte ausgeblendet)
 DONATE_WERO_URL = os.environ.get("DONATE_WERO_URL", "")
+# Empfänger für Feature Requests aus der App
+FEEDBACK_TO = os.environ.get("FEEDBACK_TO", "service@facgooder.de")
 UNVERIFIED_KEEP_DAYS = 7
 SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "1.16.1"
+APP_VERSION = "1.17.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -168,6 +170,13 @@ CREATE TABLE IF NOT EXISTS food_portions (
     created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created INTEGER NOT NULL,
     UNIQUE (food_key, name)
+);
+CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    text TEXT NOT NULL,
+    mailed INTEGER NOT NULL DEFAULT 0,
+    created INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     endpoint TEXT PRIMARY KEY,
@@ -1101,6 +1110,36 @@ def delete_template(tpl_id: int, u=Depends(current_user)):
     with db() as conn:
         conn.execute("DELETE FROM meal_templates WHERE id=? AND user_id=?", (tpl_id, u["id"]))
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- Feature Requests
+
+class FeedbackIn(BaseModel):
+    text: str = Field(min_length=5, max_length=2000)
+
+
+@app.post("/api/feedback")
+def send_feedback(f: FeedbackIn, u=Depends(current_user)):
+    """Feature Request speichern und per Mail an FEEDBACK_TO schicken (Antwort geht direkt an den Nutzer)."""
+    throttle(f"feedback:{u['id']}", limit=5, window=3600)
+    text = f.text.strip()
+    with db() as conn:
+        fid = conn.execute("INSERT INTO feedback (user_id, text, created) VALUES (?,?,?)",
+                           (u["id"], text, int(time.time()))).lastrowid
+    mailed = False
+    if mailer.configured() and FEEDBACK_TO:
+        body = (f"{text}\n\n—\nFeature Request #{fid} aus Bissfest {APP_VERSION}\n"
+                f"Benutzer: {u['username']}\nE-Mail: {u['email'] or 'keine hinterlegt'}\n"
+                f"Zeit: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n")
+        try:
+            mailer.send(FEEDBACK_TO, f"Bissfest Feature Request #{fid} von {u['username']}", body,
+                        reply_to=u["email"] or None)
+            mailed = True
+            with db() as conn:
+                conn.execute("UPDATE feedback SET mailed=1 WHERE id=?", (fid,))
+        except Exception as e:
+            logging.getLogger("mail").error("Feature Request #%s nicht gesendet: %s", fid, e)
+    return {"id": fid, "mailed": mailed}
 
 
 # ---------------------------------------------------------------- Push-Erinnerungen

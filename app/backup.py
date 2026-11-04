@@ -77,6 +77,10 @@ def run_backup() -> Path:
         conn = sqlite3.connect(tmp_db)
         conn.row_factory = sqlite3.Row
         exports = {f"benutzer/{u['username']}.json": _user_export(conn, u) for u in conn.execute("SELECT * FROM users")}
+        exports["feature-requests.json"] = [dict(r) for r in conn.execute(
+            "SELECT f.id, u.username AS von, f.text, f.mailed AS per_mail_gesendet, "
+            "datetime(f.created, 'unixepoch', 'localtime') AS zeit FROM feedback f "
+            "LEFT JOIN users u ON u.id = f.user_id ORDER BY f.id")]
         # Gemeinsame Lebensmittel-Datenbank (von allen Nutzern angelegt)
         exports["lebensmittel-datenbank.json"] = [dict(r) for r in conn.execute(
             "SELECT f.name, f.manufacturer, f.brand, f.code, f.kcal_100g, f.protein_100g, f.carbs_100g, f.sugar_100g, "
@@ -101,8 +105,8 @@ def run_backup() -> Path:
 
     _cleanup()
     (BACKUP_DIR / "letztes-backup.txt").write_text(
-        f"{datetime.now().isoformat(timespec='seconds')}  {target.name}  {len(exports) - 1} Benutzer\n")
-    log.info("Backup erstellt: %s (%d Benutzer)", target, len(exports) - 1)
+        f"{datetime.now().isoformat(timespec='seconds')}  {target.name}  {len(exports) - 2} Benutzer\n")
+    log.info("Backup erstellt: %s (%d Benutzer)", target, len(exports) - 2)
     return target
 
 
