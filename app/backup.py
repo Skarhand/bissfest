@@ -77,8 +77,9 @@ def run_backup() -> Path:
         conn = sqlite3.connect(tmp_db)
         conn.row_factory = sqlite3.Row
         exports = {f"benutzer/{u['username']}.json": _user_export(conn, u) for u in conn.execute("SELECT * FROM users")}
-        exports["feature-requests.json"] = [dict(r) for r in conn.execute(
-            "SELECT f.id, u.username AS von, f.text, f.mailed AS per_mail_gesendet, "
+        exports["feedback.json"] = [dict(r) for r in conn.execute(
+            "SELECT f.id, f.kind AS art, u.username AS von, f.text, f.meta AS technik, f.attachment AS screenshot, "
+            "f.mailed AS per_mail_gesendet, "
             "datetime(f.created, 'unixepoch', 'localtime') AS zeit FROM feedback f "
             "LEFT JOIN users u ON u.id = f.user_id ORDER BY f.id")]
         # Gemeinsame Lebensmittel-Datenbank (von allen Nutzern angelegt)
@@ -94,6 +95,9 @@ def run_backup() -> Path:
             vapid_key = Path(DB_PATH).with_name("vapid_private.pem")  # Push-Schlüssel, sonst müssen Geräte neu aktivieren
             if vapid_key.exists():
                 tar.add(vapid_key, arcname="vapid_private.pem")
+            shots = Path(DB_PATH).with_name("feedback")  # Screenshots aus Bug Reports
+            if shots.is_dir():
+                tar.add(shots, arcname="feedback")
             for arcname, data in exports.items():
                 blob = json.dumps(data, ensure_ascii=False, indent=1).encode()
                 info = tarfile.TarInfo(arcname)

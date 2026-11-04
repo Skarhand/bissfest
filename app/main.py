@@ -1,5 +1,6 @@
 """Bissfest – mit Biss zum Wunschgewicht: kleines Multi-User-Backend (FastAPI + SQLite)."""
 import asyncio
+import base64
 import hashlib
 import json
 import hmac
@@ -46,7 +47,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -278,6 +279,10 @@ def init_db():
                 conn.executemany("INSERT INTO coffee_entries (user_id, day, ml, created) VALUES (?,?,?,?)",
                                  [(r["user_id"], r["day"], COFFEE_SIZES["cup"], 0)] * r["cups"])
             conn.execute("DROP TABLE coffee")
+        have = {r["name"] for r in conn.execute("PRAGMA table_info(feedback)")}
+        for col, typ in (("kind", "TEXT NOT NULL DEFAULT 'feature'"), ("meta", "TEXT"), ("attachment", "TEXT")):
+            if col not in have:
+                conn.execute(f"ALTER TABLE feedback ADD COLUMN {col} {typ}")
         if "kind" not in {r["name"] for r in conn.execute("PRAGMA table_info(coffee_entries)")}:
             conn.execute("ALTER TABLE coffee_entries ADD COLUMN kind TEXT NOT NULL DEFAULT 'coffee'")
         # Einträge aus der Bissfest-DB ohne Barcode bekommen "custom:<id>" als Code (stabiler Portionsschlüssel)
@@ -1281,31 +1286,69 @@ def api_undo_drink(kind: DrinkKind, u=Depends(token_user)):
 
 # ---------------------------------------------------------------- Feature Requests
 
+FEEDBACK_KINDS = {"feature": "Feature Request", "bug": "Bug Report"}
+SCREENSHOT_MAX_BYTES = 3 * 1024 * 1024
+SCREENSHOT_TYPES = {b"\xff\xd8\xff": ("jpg", "image/jpeg"), b"\x89PNG": ("png", "image/png")}
+
+
 class FeedbackIn(BaseModel):
     text: str = Field(min_length=5, max_length=2000)
+    kind: Literal["feature", "bug"] = "feature"
+    # Technische Angaben vom Gerät (nur bei Bug Reports): Version, Browser, Ansicht, letzte JS-Fehler …
+    meta: dict[str, str | int | float | bool | None] | None = None
+    screenshot: str | None = Field(default=None, max_length=5_000_000)  # data:image/…;base64,…
+
+
+def _decode_screenshot(data_url: str) -> tuple[bytes, str, str]:
+    try:
+        raw = base64.b64decode(data_url.split(",", 1)[1], validate=True)
+    except Exception:
+        raise HTTPException(422, "Screenshot konnte nicht gelesen werden")
+    if len(raw) > SCREENSHOT_MAX_BYTES:
+        raise HTTPException(422, "Screenshot ist zu groß (max. 3 MB)")
+    for magic, (ext, mime) in SCREENSHOT_TYPES.items():
+        if raw.startswith(magic):
+            return raw, ext, mime
+    raise HTTPException(422, "Screenshot muss ein JPEG- oder PNG-Bild sein")
 
 
 @app.post("/api/feedback")
 def send_feedback(f: FeedbackIn, u=Depends(current_user)):
-    """Feature Request speichern und per Mail an FEEDBACK_TO schicken (Antwort geht direkt an den Nutzer)."""
+    """Feature Request oder Bug Report speichern und per Mail an FEEDBACK_TO schicken
+    (Antwort geht direkt an den Nutzer; Screenshot als Anhang und im Datenordner)."""
     throttle(f"feedback:{u['id']}", limit=5, window=3600)
-    text = f.text.strip()
+    text, label = f.text.strip(), FEEDBACK_KINDS[f.kind]
+    meta = {k[:40]: (str(v)[:500] if v is not None else None) for k, v in list((f.meta or {}).items())[:30]}
+    shot = _decode_screenshot(f.screenshot) if f.screenshot else None
     with db() as conn:
-        fid = conn.execute("INSERT INTO feedback (user_id, text, created) VALUES (?,?,?)",
-                           (u["id"], text, int(time.time()))).lastrowid
+        fid = conn.execute("INSERT INTO feedback (user_id, text, kind, meta, created) VALUES (?,?,?,?,?)",
+                           (u["id"], text, f.kind, json.dumps(meta, ensure_ascii=False) if meta else None,
+                            int(time.time()))).lastrowid
+    attachments = []
+    if shot:
+        raw, ext, mime = shot
+        folder = Path(DB_PATH).parent / "feedback"
+        folder.mkdir(exist_ok=True)
+        (folder / f"{fid}.{ext}").write_bytes(raw)
+        with db() as conn:
+            conn.execute("UPDATE feedback SET attachment=? WHERE id=?", (f"feedback/{fid}.{ext}", fid))
+        attachments.append((f"bissfest-{f.kind}-{fid}.{ext}", raw, mime))
     mailed = False
     if mailer.configured() and FEEDBACK_TO:
-        body = (f"{text}\n\n—\nFeature Request #{fid} aus Bissfest {APP_VERSION}\n"
+        tech = "".join(f"{k}: {v}\n" for k, v in meta.items())
+        body = (f"{text}\n\n—\n{label} #{fid} aus Bissfest {APP_VERSION}\n"
                 f"Benutzer: {u['username']}\nE-Mail: {u['email'] or 'keine hinterlegt'}\n"
-                f"Zeit: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n")
+                f"Zeit: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+                + (f"Screenshot: im Anhang\n" if attachments else "")
+                + (f"\nTechnische Angaben:\n{tech}" if tech else ""))
         try:
-            mailer.send(FEEDBACK_TO, f"Bissfest Feature Request #{fid} von {u['username']}", body,
-                        reply_to=u["email"] or None)
+            mailer.send(FEEDBACK_TO, f"Bissfest {label} #{fid} von {u['username']}", body,
+                        reply_to=u["email"] or None, attachments=attachments)
             mailed = True
             with db() as conn:
                 conn.execute("UPDATE feedback SET mailed=1 WHERE id=?", (fid,))
         except Exception as e:
-            logging.getLogger("mail").error("Feature Request #%s nicht gesendet: %s", fid, e)
+            logging.getLogger("mail").error("%s #%s nicht gesendet: %s", label, fid, e)
     return {"id": fid, "mailed": mailed}
 
 

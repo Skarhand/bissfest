@@ -21,7 +21,9 @@ def configured() -> bool:
     return bool(SMTP_HOST and SMTP_FROM)
 
 
-def send(to: str, subject: str, text: str, html: str | None = None, reply_to: str | None = None):
+def send(to: str, subject: str, text: str, html: str | None = None, reply_to: str | None = None,
+         attachments: list[tuple[str, bytes, str]] | None = None):
+    """attachments: Liste von (Dateiname, Inhalt, MIME-Typ wie "image/jpeg")."""
     msg = EmailMessage()
     msg["From"] = formataddr((SMTP_FROM_NAME, SMTP_FROM))
     msg["To"] = to
@@ -32,6 +34,9 @@ def send(to: str, subject: str, text: str, html: str | None = None, reply_to: st
     msg.set_content(text)
     if html:
         msg.add_alternative(html, subtype="html")
+    for filename, data, mime in attachments or []:
+        maintype, subtype = mime.split("/", 1)
+        msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
 
     ctx = ssl.create_default_context()
     if SMTP_SECURITY == "ssl":

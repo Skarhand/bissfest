@@ -227,9 +227,12 @@
       <a class="btn primary" id="android-download" href="/download/bissfest.apk" download>Android-App herunterladen</a>
     </div>
     <div class="card form" id="feedback-card">
-      <h2>💡 Feature Request</h2>
-      <p class="muted tiny">Dir fehlt etwas oder du hast eine Idee, wie Bissfest besser wird? Schreib sie uns.</p>
-      <button type="button" class="btn" id="feedback-open">Idee vorschlagen</button>
+      <h2>💬 Feedback</h2>
+      <p class="muted tiny">Dir fehlt etwas oder funktioniert etwas nicht? Schreib uns – jede Rückmeldung hilft.</p>
+      <div class="feedback-buttons">
+        <button type="button" class="btn" data-feedback="feature">💡 Idee vorschlagen</button>
+        <button type="button" class="btn" data-feedback="bug">🐞 Fehler melden</button>
+      </div>
     </div>
     <div class="card form hidden" id="donate-card">
       <h2>☕ Spendier mir einen Kaffee</h2>
@@ -418,16 +421,28 @@
   </div>
 </div>
 
-<!-- Feature Request -->
+<!-- Feedback: Feature Request / Bug Report -->
 <div id="feedback-dialog" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
   <form class="sheet-panel compact form" id="feedback-form">
     <div class="sheet-head">
       <h2 id="feedback-title">💡 Feature Request</h2>
       <button type="button" class="icon-btn" id="feedback-close" aria-label="Schließen">✕</button>
     </div>
-    <p class="muted tiny">Beschreibe kurz, was du dir wünschst oder was dir aufgefallen ist. <span id="feedback-reply"></span></p>
-    <textarea id="feedback-text" rows="7" minlength="5" maxlength="2000" required placeholder="z. B. Ich hätte gern …"></textarea>
+    <p class="muted tiny"><span id="feedback-intro"></span> <span id="feedback-reply"></span></p>
+    <textarea id="feedback-text" rows="7" minlength="5" maxlength="2000" required></textarea>
     <div class="muted tiny counter" id="feedback-count">0 / 2000</div>
+    <div class="bug-extras hidden" id="bug-extras">
+      <label class="btn small shot-pick" for="bug-shot">📷 Screenshot anhängen (optional)</label>
+      <input type="file" id="bug-shot" accept="image/*" class="visually-hidden">
+      <div class="shot-preview hidden" id="bug-shot-box">
+        <img id="bug-shot-preview" alt="Screenshot-Vorschau">
+        <button type="button" class="link" id="bug-shot-remove">Screenshot entfernen</button>
+      </div>
+      <details>
+        <summary class="muted tiny">Diese technischen Angaben werden mitgeschickt</summary>
+        <pre class="bug-meta" id="bug-meta"></pre>
+      </details>
+    </div>
     <button class="btn primary" id="feedback-send">Absenden</button>
     <p class="err" id="feedback-err"></p>
   </form>

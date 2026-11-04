@@ -1,5 +1,13 @@
 "use strict";
 
+// Letzte JavaScript-Fehler für Bug Reports merken (so früh wie möglich registriert)
+const recentErrors = [];
+const rememberError = (msg) => { recentErrors.push(`${new Date().toLocaleTimeString("de-DE")} ${msg}`.slice(0, 300)); recentErrors.splice(0, recentErrors.length - 5); };
+window.addEventListener("error", (e) => rememberError(`${e.message} (${(e.filename || "").split("/").pop()}:${e.lineno})`));
+window.addEventListener("unhandledrejection", (e) => rememberError(`Promise: ${e.reason?.message || e.reason}`));
+// Start aus der Android-App erkennen (der Referrer gilt nur beim ersten Laden)
+try { if (document.referrer.startsWith("android-app://")) sessionStorage.setItem("twa", "1"); } catch {}
+
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -84,6 +92,7 @@ function fillCopyright() {
 async function initAuth() {
   fillCopyright();
   const cfg = await api("/config").catch(() => ({ allow_registration: true }));
+  state.version = cfg.version;
   if (cfg.version) {
     $("#app-version").textContent = `Bissfest v${cfg.version} · Mit Biss zum Wunschgewicht`;
     $("#settings-version").textContent = `Bissfest – Version ${cfg.version}`;
@@ -1234,35 +1243,114 @@ function initHomeAssistant() {
 
 /* ------------------------------------------------------------ Feature Request */
 
+const FEEDBACK_KINDS = {
+  feature: {
+    title: "💡 Feature Request", intro: "Beschreibe kurz, was du dir wünschst.", placeholder: "z. B. Ich hätte gern …",
+    thanks: "Danke! Deine Idee ist angekommen 💡",
+  },
+  bug: {
+    title: "🐞 Fehler melden", intro: "Was ist passiert, und was hast du stattdessen erwartet? Ein Screenshot hilft sehr.",
+    placeholder: "z. B. Ich habe auf „Eintragen“ getippt, aber der Eintrag ist nicht erschienen …",
+    thanks: "Danke! Wir schauen uns den Fehler an 🐞",
+  },
+};
+
+function appMode() {
+  let twa = false;
+  try { twa = sessionStorage.getItem("twa") === "1"; } catch {}
+  if (twa) return "Android-App";
+  return matchMedia("(display-mode: standalone)").matches || navigator.standalone ? "installierte Web-App" : "Browser";
+}
+
+// Technische Angaben für Bug Reports – werden im Dialog vor dem Senden angezeigt
+function collectMeta() {
+  const view = $$(".view").find((v) => !v.classList.contains("hidden"))?.id.replace("view-", "") || "?";
+  return {
+    version: state.version || "?",
+    modus: appMode(),
+    geraet: navigator.userAgent,
+    bildschirm: `${screen.width}×${screen.height} (Fenster ${innerWidth}×${innerHeight}, ${devicePixelRatio}x)`,
+    darstellung: `${getTheme()}${darkQuery.matches ? " (System dunkel)" : ""}`,
+    ansicht: view === "today" ? `Tag ${state.day}` : view,
+    sprache: navigator.language,
+    online: navigator.onLine,
+    benachrichtigungen: "Notification" in window ? Notification.permission : "nicht unterstützt",
+    letzte_fehler: recentErrors.length ? recentErrors.join(" | ") : "keine",
+  };
+}
+
+// Bild verkleinern (max. 1600 px) und als JPEG-Data-URL liefern
+async function shrinkImage(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
 function closeFeedback() {
   $("#feedback-dialog").classList.add("hidden");
   document.body.style.overflow = "";
 }
 
+function clearShot() {
+  state.screenshot = null;
+  $("#bug-shot").value = "";
+  $("#bug-shot-box").classList.add("hidden");
+}
+
+function openFeedback(kind) {
+  const k = FEEDBACK_KINDS[kind];
+  state.feedbackKind = kind;
+  $("#feedback-title").textContent = k.title;
+  $("#feedback-intro").textContent = k.intro;
+  $("#feedback-text").placeholder = k.placeholder;
+  $("#feedback-err").textContent = "";
+  $("#feedback-reply").textContent = state.user.email
+    ? `Antworten kommen an ${state.user.email}.`
+    : "Du hast keine E-Mail-Adresse hinterlegt – wir können dir daher nicht direkt antworten.";
+  $("#bug-extras").classList.toggle("hidden", kind !== "bug");
+  if (kind === "bug") $("#bug-meta").textContent = Object.entries(collectMeta()).map(([key, v]) => `${key}: ${v}`).join("\n");
+  $("#feedback-dialog").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  $("#feedback-count").textContent = `${$("#feedback-text").value.length} / 2000`;
+  setTimeout(() => $("#feedback-text").focus(), 50);
+}
+
 function initFeedback() {
-  const text = $("#feedback-text"), count = () => ($("#feedback-count").textContent = `${text.value.length} / 2000`);
-  $("#feedback-open").onclick = () => {
-    $("#feedback-err").textContent = "";
-    $("#feedback-reply").textContent = state.user.email
-      ? `Antworten kommen an ${state.user.email}.`
-      : "Du hast keine E-Mail-Adresse hinterlegt – wir können dir daher nicht direkt antworten.";
-    $("#feedback-dialog").classList.remove("hidden");
-    document.body.style.overflow = "hidden";
-    count();
-    setTimeout(() => text.focus(), 50);
-  };
+  const text = $("#feedback-text");
+  $$("[data-feedback]").forEach((b) => (b.onclick = () => openFeedback(b.dataset.feedback)));
   $("#feedback-close").onclick = closeFeedback;
   $("#feedback-dialog").onclick = (e) => { if (e.target.id === "feedback-dialog") closeFeedback(); };
-  text.oninput = count;
+  text.oninput = () => ($("#feedback-count").textContent = `${text.value.length} / 2000`);
+  $("#bug-shot").onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      state.screenshot = await shrinkImage(file);
+      $("#bug-shot-preview").src = state.screenshot;
+      $("#bug-shot-box").classList.remove("hidden");
+    } catch {
+      clearShot();
+      toast("Dieses Bild konnte nicht gelesen werden");
+    }
+  };
+  $("#bug-shot-remove").onclick = clearShot;
   $("#feedback-form").onsubmit = async (e) => {
     e.preventDefault();
+    const kind = state.feedbackKind || "feature";
     $("#feedback-err").textContent = "";
     $("#feedback-send").disabled = true;
     try {
-      await api("/feedback", { method: "POST", body: { text: text.value.trim() } });
+      const body = { text: text.value.trim(), kind };
+      if (kind === "bug") Object.assign(body, { meta: collectMeta(), screenshot: state.screenshot || null });
+      await api("/feedback", { method: "POST", body });
       text.value = "";
+      clearShot();
       closeFeedback();
-      toast("Danke! Deine Idee ist angekommen 💡");
+      toast(FEEDBACK_KINDS[kind].thanks);
     } catch (err) {
       $("#feedback-err").textContent = err.message;
     } finally {

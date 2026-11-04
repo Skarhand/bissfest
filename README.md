@@ -138,6 +138,7 @@ docker compose start
 - Nährwertdaten: Open Food Facts (ODbL), USDA FoodData Central (Public Domain).
 
 ## Versionen
+- **2.2.0** – „Fehler melden“: Bug Report mit Screenshot und technischen Angaben per Mail
 - **2.1.0** – REST-API `/api/v1` mit persönlichen Tokens für Home Assistant
 - **2.0.0** – Echte Android-App (APK, Trusted Web Activity), Download in der App, assetlinks.json
 - **1.17.0** – Feature Request aus der App per Mail an service@facgooder.de (zusätzlich gespeichert)

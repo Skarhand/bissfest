@@ -330,3 +330,12 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .token-new code { word-break: break-all; font-size: .85rem; user-select: all; }
 #ha-card code { font-size: .85em; }
 #ha-token-form .btn { white-space: nowrap; }
+
+/* Feedback & Bug Report */
+.feedback-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bug-extras { display: grid; gap: 8px; }
+.shot-pick { text-align: center; cursor: pointer; }
+.shot-preview { display: grid; gap: 4px; justify-items: center; }
+.shot-preview img { max-width: 100%; max-height: 220px; border-radius: 12px; border: 1px solid var(--line); }
+.bug-meta { white-space: pre-wrap; word-break: break-word; font-size: .72rem; background: var(--bg);
+  padding: 10px; border-radius: 10px; margin: 6px 0 0; color: var(--muted); }
