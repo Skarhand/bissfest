@@ -27,6 +27,8 @@ docker compose up -d --build
 
 Dann `http://<server-ip>:7854` öffnen und ein Konto anlegen.
 
+Produktiv läuft Bissfest unter **https://bissfest.facgooder.de** (Reverse Proxy auf Port 7854).
+
 ## Auf dem Handy installieren
 - **iPhone (Safari):** Teilen → „Zum Home-Bildschirm“
 - **Android (Chrome):** Menü ⋮ → „App installieren“ / „Zum Startbildschirm hinzufügen“
@@ -53,6 +55,14 @@ bissfest.example.de {
 | `BACKUP_TIME` | `03:00` | Uhrzeit der nächtlichen Sicherung, leer = aus |
 | `BACKUP_KEEP_DAYS` | `30` | Aufbewahrungsdauer der Backups |
 | `OFF_COUNTRY` | `de` | Länder-Subdomain für die Open-Food-Facts-Fallback-Suche |
+
+## Registrierung mit E-Mail-Bestätigung
+Neue Konten brauchen eine E-Mail-Adresse. Bissfest schickt einen Bestätigungslink (24 Stunden gültig);
+erst danach ist die Anmeldung möglich. Nie bestätigte Konten werden nach 7 Tagen gelöscht. Konten von vor
+Version 1.11 gelten als bestätigt.
+
+Für den Versand `.env.example` als `.env` neben die `docker-compose.yml` kopieren, SMTP-Daten eintragen,
+`chmod 600 .env` und `docker compose up -d`. Ohne SMTP-Daten ist die Registrierung automatisch gesperrt.
 
 ## Erinnerungen (Push-Nachrichten)
 In den Einstellungen bekommt jede Mahlzeit eine optionale Uhrzeit. Zu dieser Zeit schickt die App eine
@@ -103,6 +113,9 @@ docker compose start
 - Nährwertdaten: Open Food Facts (ODbL), USDA FoodData Central (Public Domain).
 
 ## Versionen
+- **1.11.1** – Copyright-Hinweis
+- **1.11.0** – Registrierung mit E-Mail-Bestätigung (SMTP über `.env`)
+- **1.10.0** – Neues Logo und App-Icon, Markenfarben, Betrieb unter https://bissfest.facgooder.de
 - **1.9.0** – Barcode-Scanner mit Kamera für iPhone und Android (ZXing als Fallback)
 - **1.8.0** – Gemeinsame Bissfest-Lebensmitteldatenbank (Hersteller, Marke, Zucker), gespeicherte Gerichte
 - **1.7.0** – Feste Mahlzeiten (Frühstück, Mittagessen, Abendessen, Snack 1–4) mit festen Push-Texten
@@ -113,3 +126,6 @@ docker compose start
 - **1.2.0** – Kaloriendefizit-Rechner (Grund-/Gesamtumsatz), Defizit in Tagesansicht und Verlauf
 - **1.1.0** – Nächtliches Backup aufs Netzlaufwerk
 - **1.0.0** – Erste Version: Mehrbenutzer, Mahlzeiten, Lebensmittelsuche, Wasser, Gewicht
+
+---
+© 2026 Sebastian Frie

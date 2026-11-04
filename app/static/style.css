@@ -1,13 +1,13 @@
 :root {
-  --bg: #f3f5f4;
+  --bg: #fbf7ef;
   --card: #ffffff;
   --text: #17201b;
   --muted: #66736b;
   --line: #e2e7e4;
-  --accent: #16a34a;
-  --accent-soft: #dcfce7;
+  --accent: #2e8b5f;
+  --accent-soft: #e2f1e8;
   --water: #0ea5e9;
-  --warn: #ea580c;
+  --warn: #c94a2e;
   --danger: #dc2626;
   --radius: 16px;
   --tabbar-h: 62px;
@@ -23,10 +23,10 @@
     --text: #e8eeea;
     --muted: #94a39a;
     --line: #2a352f;
-    --accent: #22c55e;
-    --accent-soft: #14381f;
+    --accent: #45b07c;
+    --accent-soft: #173d2a;
     --water: #38bdf8;
-    --warn: #fb923c;
+    --warn: #ef7a5c;
     --danger: #f87171;
     --overlay: rgba(0, 0, 0, .65);
     --on-accent: #052e14;
@@ -39,10 +39,10 @@
   --text: #e8eeea;
   --muted: #94a39a;
   --line: #2a352f;
-  --accent: #22c55e;
-  --accent-soft: #14381f;
+  --accent: #45b07c;
+  --accent-soft: #173d2a;
   --water: #38bdf8;
-  --warn: #fb923c;
+  --warn: #ef7a5c;
   --danger: #f87171;
   --overlay: rgba(0, 0, 0, .65);
   --on-accent: #052e14;
@@ -268,3 +268,12 @@ label .search-row .btn { padding: 0 14px; font-size: 1.2rem; }
 }
 .scanner-actions .btn { min-width: 120px; background: rgba(255, 255, 255, .92); color: #111; }
 .scanner-actions .btn.primary { background: #facc15; }
+
+/* Logo (Login) – das Logo hat einen cremefarbenen Hintergrund, daher als Karte (passt auch im Darkmode) */
+.logo-card { margin: 0 auto; width: min(260px, 70vw); background: #fbf7ef; border-radius: 24px; overflow: hidden; }
+.logo-card img { display: block; width: 100%; height: auto; }
+
+.notice { text-align: left; gap: 6px; border: 1px solid var(--line); }
+.notice p { margin: 0; }
+
+.copyright { text-align: center; color: var(--muted); font-size: .72rem; margin: 0; }

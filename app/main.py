@@ -16,11 +16,12 @@ from typing import Literal
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import backup
+import mailer
 import push
 
 DB_PATH = os.environ.get("DB_PATH", "/data/abnehm.db")
@@ -28,11 +29,15 @@ ALLOW_REGISTRATION = os.environ.get("ALLOW_REGISTRATION", "true").lower() == "tr
 FDC_API_KEY = os.environ.get("FDC_API_KEY", "DEMO_KEY")  # USDA FoodData Central, leer = aus
 OFF_COUNTRY = os.environ.get("OFF_COUNTRY", "de")
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
+# Öffentliche Adresse für Links in E-Mails (leer = aus der Anfrage ermitteln)
+PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
+VERIFY_HOURS = 24
+UNVERIFIED_KEEP_DAYS = 7
 SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "1.9.0"
+APP_VERSION = "1.11.1"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -138,6 +143,12 @@ CREATE TABLE IF NOT EXISTS meal_template_items (
     source TEXT NOT NULL DEFAULT '',
     code TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS email_tokens (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    purpose TEXT NOT NULL,
+    expires INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     endpoint TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -150,7 +161,9 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 # Später ergänzte Spalten (per Migration): Körperdaten für die Defizit-Berechnung und
 # Erinnerungszeiten als JSON {"<Mahlzeit-Index>": "HH:MM"}
 PROFILE_COLUMNS = {"sex": "TEXT", "birth_year": "INTEGER", "height_cm": "REAL", "activity": "REAL", "weekly_loss": "REAL",
-                   "reminders": "TEXT"}
+                   "reminders": "TEXT", "email": "TEXT",
+                   # bestehende Konten gelten als bestätigt; neue Registrierungen setzen 0
+                   "email_verified": "INTEGER NOT NULL DEFAULT 1"}
 ACTIVITY_FACTORS = (1.2, 1.375, 1.55, 1.725, 1.9)
 
 
@@ -206,6 +219,9 @@ def init_db():
             conn.execute("ALTER TABLE food_entries ADD COLUMN sugar_100g REAL")
         conn.execute("DELETE FROM sessions WHERE expires < ?", (int(time.time()),))
         migrate_meal_order(conn)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE) "
+                     "WHERE email IS NOT NULL")
+        cleanup_unverified(conn)
     backup.start_scheduler()
     push.vapid()
     push.start_scheduler(send_meal_reminders)
@@ -259,6 +275,7 @@ def user_public(u: sqlite3.Row) -> dict:
     meal_names = MEAL_NAMES[:u["meals_per_day"]]
     return {
         "username": u["username"],
+        "email": u["email"],
         "meals_per_day": u["meals_per_day"],
         "meal_names": meal_names,
         "kcal_goal": u["kcal_goal"],
@@ -288,28 +305,115 @@ class Credentials(BaseModel):
 
 @app.get("/api/config")
 def config():
-    return {"allow_registration": ALLOW_REGISTRATION, "version": APP_VERSION}
+    return {"allow_registration": ALLOW_REGISTRATION and mailer.configured(), "version": APP_VERSION}
+
+
+class RegisterIn(Credentials):
+    email: str = Field(max_length=200, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def cleanup_unverified(conn: sqlite3.Connection):
+    """Nie bestätigte Konten nach UNVERIFIED_KEEP_DAYS Tagen und abgelaufene Links löschen."""
+    conn.execute("DELETE FROM users WHERE email_verified = 0 AND created < ?",
+                 (int(time.time()) - UNVERIFIED_KEEP_DAYS * 86400,))
+    conn.execute("DELETE FROM email_tokens WHERE expires < ?", (int(time.time()),))
+
+
+def public_base(request: Request) -> str:
+    return PUBLIC_URL or str(request.base_url).rstrip("/")
+
+
+def send_verification(request: Request, user_id: int, username: str, email: str):
+    token = secrets.token_urlsafe(32)
+    with db() as conn:
+        conn.execute("DELETE FROM email_tokens WHERE user_id=? AND purpose='verify'", (user_id,))
+        conn.execute("INSERT INTO email_tokens (token_hash, user_id, purpose, expires) VALUES (?,?,?,?)",
+                     (hashlib.sha256(token.encode()).hexdigest(), user_id, "verify",
+                      int(time.time()) + VERIFY_HOURS * 3600))
+    base = public_base(request)
+    link = f"{base}/verify?token={token}"
+    text = (f"Hallo {username},\n\nwillkommen bei Bissfest – mit Biss zum Wunschgewicht!\n\n"
+            f"Bitte bestätige deine E-Mail-Adresse, damit du dich anmelden kannst:\n{link}\n\n"
+            f"Der Link ist {VERIFY_HOURS} Stunden gültig. Wenn du dich nicht bei Bissfest registriert hast, "
+            f"kannst du diese Mail ignorieren – das Konto wird dann automatisch gelöscht.\n")
+    html = f"""<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:auto;color:#17201b">
+  <img src="{base}/static/logo.png" alt="Bissfest" width="160" style="display:block;margin:0 auto 16px;border-radius:16px">
+  <p>Hallo {username},</p>
+  <p>willkommen bei <b>Bissfest</b> – mit Biss zum Wunschgewicht!</p>
+  <p>Bitte bestätige deine E-Mail-Adresse, damit du dich anmelden kannst:</p>
+  <p style="text-align:center;margin:28px 0">
+    <a href="{link}" style="background:#2e8b5f;color:#fff;padding:14px 24px;border-radius:12px;text-decoration:none;font-weight:600">E-Mail-Adresse bestätigen</a>
+  </p>
+  <p style="font-size:13px;color:#66736b">Der Link ist {VERIFY_HOURS} Stunden gültig. Wenn du dich nicht bei Bissfest
+    registriert hast, kannst du diese Mail ignorieren – das Konto wird dann automatisch gelöscht.</p>
+</div>"""
+    mailer.send(email, "Bitte bestätige deine E-Mail-Adresse für Bissfest", text, html)
 
 
 @app.post("/api/register")
-def register(creds: Credentials, request: Request, response: Response):
+def register(creds: RegisterIn, request: Request):
     if not ALLOW_REGISTRATION:
         raise HTTPException(403, "Registrierung ist deaktiviert")
+    if not mailer.configured():
+        raise HTTPException(503, "Registrierung ist gerade nicht möglich: Der E-Mail-Versand ist noch nicht eingerichtet.")
     throttle("reg:" + (request.client.host if request.client else "?"), limit=5, window=3600)
     if not re.fullmatch(r"[A-Za-z0-9_.\-]+", creds.username):
         raise HTTPException(400, "Benutzername: nur Buchstaben, Zahlen, _ . -")
+    email = creds.email.strip().lower()
     salt = secrets.token_hex(16)
+    with db() as conn:
+        cleanup_unverified(conn)
+        if conn.execute("SELECT 1 FROM users WHERE username=?", (creds.username,)).fetchone():
+            raise HTTPException(409, "Benutzername ist bereits vergeben")
+        if conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
+            raise HTTPException(409, "Für diese E-Mail-Adresse gibt es schon ein Konto")
+        user_id = conn.execute(
+            "INSERT INTO users (username, pw_hash, salt, created, email, email_verified) VALUES (?, ?, ?, ?, ?, 0)",
+            (creds.username, hash_pw(creds.password, salt), salt, int(time.time()), email),
+        ).lastrowid
     try:
+        send_verification(request, user_id, creds.username, email)
+    except Exception as e:
+        logging.getLogger("mail").error("Bestätigungsmail an %s fehlgeschlagen: %s", email, e)
         with db() as conn:
-            cur = conn.execute(
-                "INSERT INTO users (username, pw_hash, salt, created) VALUES (?, ?, ?, ?)",
-                (creds.username, hash_pw(creds.password, salt), salt, int(time.time())),
-            )
-            user_id = cur.lastrowid
-    except sqlite3.IntegrityError:
-        raise HTTPException(409, "Benutzername ist bereits vergeben")
-    start_session(response, user_id)
-    return {"ok": True}
+            conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+        raise HTTPException(502, "Die Bestätigungsmail konnte nicht verschickt werden. Bitte später erneut versuchen.")
+    return {"verify": True, "email": email}
+
+
+@app.post("/api/resend-verification")
+def resend_verification(creds: Credentials, request: Request):
+    """Bestätigungsmail erneut senden – nur mit korrektem Passwort, damit niemand fremde Postfächer zuspammt."""
+    throttle("resend:" + creds.username.lower(), limit=3, window=3600)
+    with db() as conn:
+        u = conn.execute("SELECT * FROM users WHERE username = ?", (creds.username,)).fetchone()
+    if not u or not hmac.compare_digest(u["pw_hash"], hash_pw(creds.password, u["salt"])):
+        raise HTTPException(401, "Benutzername oder Passwort falsch")
+    if u["email_verified"]:
+        return {"ok": True, "already": True}
+    try:
+        send_verification(request, u["id"], u["username"], u["email"])
+    except Exception as e:
+        logging.getLogger("mail").error("Bestätigungsmail an %s fehlgeschlagen: %s", u["email"], e)
+        raise HTTPException(502, "Die Mail konnte nicht verschickt werden. Bitte später erneut versuchen.")
+    return {"ok": True, "email": u["email"]}
+
+
+@app.get("/verify")
+def verify_email(token: str = ""):
+    """Link aus der Bestätigungsmail: Konto freischalten und direkt anmelden."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT user_id FROM email_tokens WHERE token_hash=? AND purpose='verify' AND expires > ?",
+            (hashlib.sha256(token.encode()).hexdigest(), int(time.time()))).fetchone()
+        if row:
+            conn.execute("UPDATE users SET email_verified=1 WHERE id=?", (row["user_id"],))
+            conn.execute("DELETE FROM email_tokens WHERE user_id=? AND purpose='verify'", (row["user_id"],))
+    if not row:
+        return RedirectResponse("/?verified=0", status_code=303)
+    response = RedirectResponse("/?verified=1", status_code=303)
+    start_session(response, row["user_id"])
+    return response
 
 
 @app.post("/api/login")
@@ -319,6 +423,8 @@ def login(creds: Credentials, request: Request, response: Response):
         u = conn.execute("SELECT * FROM users WHERE username = ?", (creds.username,)).fetchone()
     if not u or not hmac.compare_digest(u["pw_hash"], hash_pw(creds.password, u["salt"])):
         raise HTTPException(401, "Benutzername oder Passwort falsch")
+    if not u["email_verified"]:
+        raise HTTPException(403, f"Bitte bestätige zuerst deine E-Mail-Adresse – wir haben dir einen Link an {u['email']} geschickt.")
     start_session(response, u["id"])
     return {"ok": True}
 
@@ -795,6 +901,9 @@ def push_device_count(user_id: int) -> int:
 def send_meal_reminders(minute: datetime):
     """Jede Minute: Erinnerung für Mahlzeiten, deren Zeit jetzt ist und für die heute noch nichts eingetragen wurde."""
     hhmm, day = minute.strftime("%H:%M"), minute.date().isoformat()
+    if hhmm == "04:15":
+        with db() as conn:
+            cleanup_unverified(conn)
     with db() as conn:
         users = conn.execute(
             "SELECT * FROM users WHERE reminders LIKE ? AND id IN (SELECT user_id FROM push_subscriptions)",
@@ -864,7 +973,9 @@ def push_test(u=Depends(current_user)):
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+    # __V__ = App-Version an CSS/JS-Adressen: nach jedem Update lädt der Browser sie garantiert neu
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8").replace("__V__", APP_VERSION)
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/sw.js")

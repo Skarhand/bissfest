@@ -1,6 +1,6 @@
 // Minimaler Service Worker: App-Hülle offline verfügbar, API-Daten immer frisch vom Server.
-const CACHE = "bissfest-v8";
-const SHELL = ["/", "/static/style.css", "/static/app.js", "/static/icon.svg", "/static/manifest.json"];
+const CACHE = "bissfest-v11";
+const SHELL = ["/", "/static/style.css", "/static/app.js", "/static/logo.png", "/static/favicon-64.png", "/static/manifest.json"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
@@ -12,13 +12,15 @@ self.addEventListener("activate", (e) => {
 });
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.pathname.startsWith("/api/")) return;
+  if (e.request.method !== "GET" || url.pathname.startsWith("/api/") || url.pathname === "/verify") return;
   // Netzwerk zuerst, Cache als Fallback
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        if (res.ok && res.type === "basic") {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
+        }
         return res;
       })
       .catch(() => caches.match(e.request))

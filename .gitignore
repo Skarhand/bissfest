@@ -6,3 +6,6 @@ data/
 *.pem
 __pycache__/
 *.pyc
+
+# SMTP-Zugangsdaten
+.env

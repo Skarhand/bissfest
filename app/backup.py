@@ -30,6 +30,7 @@ def _user_export(conn: sqlite3.Connection, user: sqlite3.Row) -> dict:
     rows = lambda sql: [dict(r) for r in conn.execute(sql, (uid,))]
     return {
         "benutzer": user["username"],
+        "email": user["email"] if "email" in user.keys() else None,
         "erstellt": datetime.fromtimestamp(user["created"]).isoformat(),
         "einstellungen": {
             "mahlzeiten_pro_tag": user["meals_per_day"],

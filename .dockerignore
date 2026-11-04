@@ -3,3 +3,5 @@ data/
 *.db
 .git
 .gitignore
+.env
+.env.example

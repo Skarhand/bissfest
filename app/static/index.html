@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f3f5f4">
+  <meta name="theme-color" content="#fbf7ef">
   <script>
     // Gewählte Darstellung vor dem ersten Zeichnen setzen (kein Aufblitzen im falschen Modus)
     try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
@@ -14,28 +14,33 @@
   <meta name="apple-mobile-web-app-title" content="Bissfest">
   <title>Bissfest</title>
   <meta name="description" content="Bissfest – mit Biss zum Wunschgewicht. Mahlzeiten, Kalorien, Wasser und Gewicht im Blick.">
-  <link rel="manifest" href="/static/manifest.json">
-  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/static/manifest.json?v=__V__">
+  <link rel="icon" href="/static/favicon-64.png" type="image/png">
   <link rel="apple-touch-icon" href="/static/icon-180.png">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=__V__">
 </head>
 <body>
 
 <!-- Anmeldung -->
 <section id="auth" class="screen hidden">
   <div class="auth-box">
-    <img src="/static/icon.svg" alt="" class="auth-logo">
-    <h1>Bissfest</h1>
-    <p class="slogan">Mit Biss zum Wunschgewicht.</p>
+    <h1 class="logo-card"><img src="/static/logo.png" alt="Bissfest – Mit Biss zum Wunschgewicht" width="720" height="703"></h1>
     <p class="muted tiny tagline">Abnehmen klappt nicht mit Verzicht, sondern mit Dranbleiben. Bissfest zählt deine
       Mahlzeiten, Kalorien, Wasser und dein Gewicht – damit du Tag für Tag dranbleibst.</p>
     <form id="auth-form" autocomplete="on">
       <input id="auth-user" name="username" placeholder="Benutzername" autocomplete="username" autocapitalize="none" required minlength="3">
+      <input id="auth-email" name="email" type="email" placeholder="E-Mail-Adresse" autocomplete="email" autocapitalize="none" class="hidden">
       <input id="auth-pass" name="password" type="password" placeholder="Passwort (min. 8 Zeichen)" autocomplete="current-password" required minlength="8">
       <button type="submit" class="btn primary" id="auth-submit">Anmelden</button>
     </form>
     <p class="err" id="auth-err"></p>
+    <div class="card notice hidden" id="auth-notice">
+      <strong id="auth-notice-title"></strong>
+      <p class="muted tiny" id="auth-notice-text"></p>
+      <button type="button" class="btn small hidden" id="auth-resend">Bestätigungsmail erneut senden</button>
+    </div>
     <button class="link" id="auth-toggle">Noch kein Konto? Registrieren</button>
+    <p class="copyright" data-copyright></p>
   </div>
 </section>
 
@@ -86,6 +91,7 @@
 
     <div id="meals"></div>
     <p class="version" id="app-version"></p>
+    <p class="copyright" data-copyright></p>
   </main>
 
   <main id="view-history" class="view hidden">
@@ -154,6 +160,7 @@
       <button class="btn danger" id="logout">Abmelden</button>
       <p class="muted tiny">Nährwerte: Open Food Facts (ODbL) und USDA FoodData Central.</p>
       <p class="muted tiny" id="settings-version"></p>
+      <p class="muted tiny" data-copyright></p>
     </div>
   </main>
 
@@ -323,6 +330,6 @@
 
 <div id="toast" class="toast hidden"></div>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=__V__"></script>
 </body>
 </html>

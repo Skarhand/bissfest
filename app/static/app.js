@@ -31,7 +31,9 @@ async function api(path, opts = {}) {
   if (!res.ok) {
     let msg = data.detail;
     if (Array.isArray(msg)) msg = "Bitte Eingaben prüfen";
-    throw new Error(msg || "Fehler " + res.status);
+    const err = new Error(msg || "Fehler " + res.status);
+    err.status = res.status;
+    throw err;
   }
   return data;
 }
@@ -71,7 +73,16 @@ function showAuth() {
   $("#auth").classList.remove("hidden");
 }
 
+// Copyright-Hinweis (Jahr läuft automatisch mit: 2026, ab 2027 „2026–2027“ usw.)
+const COPYRIGHT_OWNER = "Sebastian Frie";
+function fillCopyright() {
+  const year = new Date().getFullYear();
+  const text = `© ${year > 2026 ? `2026–${year}` : 2026} ${COPYRIGHT_OWNER}`;
+  $$("[data-copyright]").forEach((el) => (el.textContent = text));
+}
+
 async function initAuth() {
+  fillCopyright();
   const cfg = await api("/config").catch(() => ({ allow_registration: true }));
   if (cfg.version) {
     $("#app-version").textContent = `Bissfest v${cfg.version} · Mit Biss zum Wunschgewicht`;
@@ -80,25 +91,63 @@ async function initAuth() {
   if (!cfg.allow_registration) $("#auth-toggle").classList.add("hidden");
   $("#auth-toggle").onclick = () => {
     state.registerMode = !state.registerMode;
+    $("#auth-email").classList.toggle("hidden", !state.registerMode);
+    $("#auth-email").required = state.registerMode;
+    hideNotice();
     $("#auth-submit").textContent = state.registerMode ? "Konto erstellen" : "Anmelden";
     $("#auth-toggle").textContent = state.registerMode ? "Schon ein Konto? Anmelden" : "Noch kein Konto? Registrieren";
     $("#auth-pass").autocomplete = state.registerMode ? "new-password" : "current-password";
     $("#auth-err").textContent = "";
   };
+  const creds = () => ({ username: $("#auth-user").value.trim(), password: $("#auth-pass").value });
   $("#auth-form").onsubmit = async (e) => {
     e.preventDefault();
     $("#auth-err").textContent = "";
+    hideNotice();
     try {
-      await api(state.registerMode ? "/register" : "/login", {
-        method: "POST",
-        body: { username: $("#auth-user").value.trim(), password: $("#auth-pass").value },
-      });
+      if (state.registerMode) {
+        const r = await api("/register", { method: "POST", body: { ...creds(), email: $("#auth-email").value.trim() } });
+        $("#auth-toggle").click(); // zurück zur Anmeldung – nach dem Bestätigen geht es direkt los
+        showNotice("📬 Fast geschafft!", `Wir haben dir eine Mail an ${r.email} geschickt. Klicke auf den Link darin, um dein Konto zu bestätigen – danach bist du direkt angemeldet. Schau auch im Spam-Ordner nach.`, true);
+        return;
+      }
+      await api("/login", { method: "POST", body: creds() });
       $("#auth-pass").value = "";
       await startApp();
     } catch (err) {
-      $("#auth-err").textContent = err.message;
+      if (err.status === 403 && !state.registerMode) showNotice("📬 E-Mail noch nicht bestätigt", err.message, true);
+      else $("#auth-err").textContent = err.message;
     }
   };
+  $("#auth-resend").onclick = async () => {
+    if (!$("#auth-user").value.trim() || !$("#auth-pass").value) {
+      $("#auth-err").textContent = "Bitte Benutzername und Passwort eingeben, dann erneut senden.";
+      return;
+    }
+    try {
+      const r = await api("/resend-verification", { method: "POST", body: creds() });
+      if (r.already) showNotice("✅ Schon bestätigt", "Deine E-Mail-Adresse ist bereits bestätigt – du kannst dich anmelden.", false);
+      else showNotice("📬 Neue Mail ist unterwegs", `Wir haben den Bestätigungslink erneut an ${r.email} geschickt.`, true);
+    } catch (err) { $("#auth-err").textContent = err.message; }
+  };
+  // Rückkehr vom Bestätigungslink (/verify leitet auf /?verified=1 bzw. 0 um)
+  const verified = new URLSearchParams(location.search).get("verified");
+  if (verified !== null) {
+    history.replaceState(null, "", "/");
+    if (verified === "1") setTimeout(() => toast("✅ E-Mail bestätigt – willkommen bei Bissfest!"), 600);
+    else showNotice("⚠️ Link ungültig", "Der Bestätigungslink ist abgelaufen oder wurde schon benutzt. Melde dich an oder lass dir eine neue Mail schicken.", true);
+  }
+}
+
+function showNotice(title, text, resend) {
+  $("#auth-notice-title").textContent = title;
+  $("#auth-notice-text").textContent = text;
+  $("#auth-resend").classList.toggle("hidden", !resend);
+  $("#auth-notice").classList.remove("hidden");
+}
+
+function hideNotice() {
+  $("#auth-notice").classList.add("hidden");
 }
 
 async function startApp() {
@@ -927,7 +976,7 @@ function applyTheme(choice) {
   else delete document.documentElement.dataset.theme;
   const dark = choice === "dark" || (choice === "system" && darkQuery.matches);
   // Farbe der Statusleiste / Browserleiste an den Hintergrund anpassen
-  document.querySelector('meta[name="theme-color"]').content = dark ? "#0e1411" : "#f3f5f4";
+  document.querySelector('meta[name="theme-color"]').content = dark ? "#0e1411" : "#fbf7ef";
   $$("[data-theme-choice]").forEach((b) => {
     const on = b.dataset.themeChoice === choice;
     b.classList.toggle("active", on);

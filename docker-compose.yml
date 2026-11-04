@@ -14,11 +14,17 @@ services:
         target: /mnt/abnehm-app
         bind:
           propagation: rslave
+    # SMTP-Zugangsdaten für die Bestätigungsmails (nur auf dem Server, nicht im git) – Vorlage: .env.example
+    env_file:
+      - path: .env
+        required: false
     environment:
+      # Öffentliche Adresse für Links in E-Mails
+      PUBLIC_URL: "https://bissfest.facgooder.de"
       # Nach dem Anlegen aller Konten auf "false" setzen, damit sich niemand Fremdes registriert
       ALLOW_REGISTRATION: "true"
-      # true, sobald die App hinter HTTPS (Reverse Proxy) läuft
-      COOKIE_SECURE: "false"
+      # App läuft hinter HTTPS (https://bissfest.facgooder.de) – Login-Cookie nur über HTTPS senden
+      COOKIE_SECURE: "true"
       # Kostenloser Key: https://fdc.nal.usda.gov/api-key-signup  (DEMO_KEY = stark limitiert, leer = USDA aus)
       FDC_API_KEY: "DEMO_KEY"
       OFF_COUNTRY: "de"
@@ -28,4 +34,4 @@ services:
       BACKUP_TIME: "03:00"
       BACKUP_KEEP_DAYS: "30"
       # Kontaktadresse für die Push-Dienste (Apple/Google), Pflichtangabe für Push-Nachrichten
-      VAPID_SUBJECT: "mailto:abnehm-app@example.org"
+      VAPID_SUBJECT: "https://bissfest.facgooder.de"
