@@ -37,7 +37,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "1.14.0"
+APP_VERSION = "1.15.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS water_entries (
     created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_water_user_day ON water_entries(user_id, day);
+-- Heißgetränke (Kaffee und Tee, Spalte "kind" per Migration); Tabellenname historisch
 CREATE TABLE IF NOT EXISTS coffee_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -182,7 +183,8 @@ PROFILE_COLUMNS = {"sex": "TEXT", "birth_year": "INTEGER", "height_cm": "REAL", 
                    # bestehende Konten gelten als bestätigt; neue Registrierungen setzen 0
                    "email_verified": "INTEGER NOT NULL DEFAULT 1",
                    # Kaffee-Tracker (Extra, standardmäßig aus) und Koffein pro Tasse
-                   "coffee_enabled": "INTEGER NOT NULL DEFAULT 0", "caffeine_mg": "INTEGER NOT NULL DEFAULT 80"}
+                   "coffee_enabled": "INTEGER NOT NULL DEFAULT 0", "caffeine_mg": "INTEGER NOT NULL DEFAULT 80",
+                   "tea_enabled": "INTEGER NOT NULL DEFAULT 0", "tea_caffeine_mg": "INTEGER NOT NULL DEFAULT 40"}
 # Später ergänzte Spalten für Einträge und Gericht-Zutaten: Zucker und die gewählte Portion ("2 × Scheibe")
 ENTRY_COLUMNS = {"sugar_100g": "REAL", "portion_name": "TEXT", "portion_count": "REAL"}
 # Kaffee-Größen in ml; das eingestellte Koffein (caffeine_mg) gilt für eine Tasse
@@ -251,6 +253,8 @@ def init_db():
                 conn.executemany("INSERT INTO coffee_entries (user_id, day, ml, created) VALUES (?,?,?,?)",
                                  [(r["user_id"], r["day"], COFFEE_SIZES["cup"], 0)] * r["cups"])
             conn.execute("DROP TABLE coffee")
+        if "kind" not in {r["name"] for r in conn.execute("PRAGMA table_info(coffee_entries)")}:
+            conn.execute("ALTER TABLE coffee_entries ADD COLUMN kind TEXT NOT NULL DEFAULT 'coffee'")
         # Einträge aus der Bissfest-DB ohne Barcode bekommen "custom:<id>" als Code (stabiler Portionsschlüssel)
         for table in ("food_entries", "meal_template_items"):
             conn.execute(f"""UPDATE {table} SET code = 'custom:' || (SELECT cf.id FROM custom_foods cf
@@ -329,6 +333,8 @@ def user_public(u: sqlite3.Row) -> dict:
         "push_devices": push_device_count(u["id"]),
         "coffee_enabled": bool(u["coffee_enabled"]),
         "caffeine_mg": u["caffeine_mg"],
+        "tea_enabled": bool(u["tea_enabled"]),
+        "tea_caffeine_mg": u["tea_caffeine_mg"],
     }
 
 
@@ -498,6 +504,8 @@ class Settings(BaseModel):
     reminders: dict[str, str] | None = None
     coffee_enabled: bool | None = None
     caffeine_mg: int | None = Field(default=None, ge=0, le=500)
+    tea_enabled: bool | None = None
+    tea_caffeine_mg: int | None = Field(default=None, ge=0, le=500)
 
 
 @app.put("/api/settings")
@@ -518,10 +526,12 @@ def save_settings(s: Settings, u=Depends(current_user)):
         conn.execute(
             "UPDATE users SET meals_per_day=?, kcal_goal=?, water_goal_ml=?, target_weight=?, "
             "sex=?, birth_year=?, height_cm=?, activity=?, weekly_loss=?, "
-            "coffee_enabled=COALESCE(?, coffee_enabled), caffeine_mg=COALESCE(?, caffeine_mg) WHERE id=?",
+            "coffee_enabled=COALESCE(?, coffee_enabled), caffeine_mg=COALESCE(?, caffeine_mg), "
+            "tea_enabled=COALESCE(?, tea_enabled), tea_caffeine_mg=COALESCE(?, tea_caffeine_mg) WHERE id=?",
             (s.meals_per_day, s.kcal_goal, s.water_goal_ml, s.target_weight,
              s.sex, s.birth_year, s.height_cm, s.activity, s.weekly_loss,
-             None if s.coffee_enabled is None else int(s.coffee_enabled), s.caffeine_mg, u["id"]),
+             None if s.coffee_enabled is None else int(s.coffee_enabled), s.caffeine_mg,
+             None if s.tea_enabled is None else int(s.tea_enabled), s.tea_caffeine_mg, u["id"]),
         )
         u = conn.execute("SELECT * FROM users WHERE id=?", (u["id"],)).fetchone()
     return user_public(u)
@@ -578,10 +588,10 @@ def get_day(day: str, u=Depends(current_user)):
             "SELECT COALESCE(SUM(ml),0) AS ml, COUNT(*) AS n FROM water_entries WHERE user_id=? AND day=?",
             (u["id"], day)).fetchone()
         w = conn.execute("SELECT kg FROM weights WHERE user_id=? AND day=?", (u["id"], day)).fetchone()
-        coffee = coffee_day(conn, u["id"], day)
+        coffee, tea = drink_day(conn, u["id"], day, "coffee"), drink_day(conn, u["id"], day, "tea")
     totals = {k: round(sum((f[k] or 0) for f in foods), 1) for k in ("kcal", *NUTRIENTS)}
     return {"day": day, "foods": foods, "water_ml": water["ml"], "water_count": water["n"],
-            "weight": w["kg"] if w else None, "coffee": coffee, "totals": totals}
+            "weight": w["kg"] if w else None, "coffee": coffee, "tea": tea, "totals": totals}
 
 
 class FoodIn(BaseModel):
@@ -678,37 +688,42 @@ def add_water(wi: WaterIn, u=Depends(current_user)):
     return {"water_ml": total}
 
 
-def coffee_day(conn: sqlite3.Connection, user_id: int, day: str) -> dict:
+DrinkKind = Literal["coffee", "tea"]
+
+
+def drink_day(conn: sqlite3.Connection, user_id: int, day: str, kind: str) -> dict:
     r = conn.execute(
         "SELECT COALESCE(SUM(ml = ?), 0) AS cups, COALESCE(SUM(ml = ?), 0) AS mugs, COALESCE(SUM(ml), 0) AS ml "
-        "FROM coffee_entries WHERE user_id=? AND day=?",
-        (COFFEE_SIZES["cup"], COFFEE_SIZES["mug"], user_id, day)).fetchone()
+        "FROM coffee_entries WHERE user_id=? AND day=? AND kind=?",
+        (COFFEE_SIZES["cup"], COFFEE_SIZES["mug"], user_id, day, kind)).fetchone()
     return dict(r)
 
 
-class CoffeeIn(BaseModel):
+class DrinkIn(BaseModel):
     day: str
     size: Literal["cup", "mug"] = "cup"
+    kind: DrinkKind = "coffee"
 
 
 @app.post("/api/coffee")
-def add_coffee(c: CoffeeIn, u=Depends(current_user)):
-    """Tasse (150 ml) oder Pott (250 ml) eintragen."""
+def add_drink(c: DrinkIn, u=Depends(current_user)):
+    """Tasse (150 ml) oder Pott (250 ml) Kaffee bzw. Tee eintragen."""
     day = check_day(c.day)
     with db() as conn:
-        conn.execute("INSERT INTO coffee_entries (user_id, day, ml, created) VALUES (?,?,?,?)",
-                     (u["id"], day, COFFEE_SIZES[c.size], int(time.time())))
-        return coffee_day(conn, u["id"], day)
+        conn.execute("INSERT INTO coffee_entries (user_id, day, ml, kind, created) VALUES (?,?,?,?,?)",
+                     (u["id"], day, COFFEE_SIZES[c.size], c.kind, int(time.time())))
+        return drink_day(conn, u["id"], day, c.kind)
 
 
 @app.delete("/api/coffee/last")
-def undo_coffee(day: str, u=Depends(current_user)):
-    """Den zuletzt eingetragenen Kaffee des Tages zurücknehmen."""
+def undo_drink(day: str, kind: DrinkKind = "coffee", u=Depends(current_user)):
+    """Den zuletzt eingetragenen Kaffee bzw. Tee des Tages zurücknehmen."""
     day = check_day(day)
     with db() as conn:
-        conn.execute("DELETE FROM coffee_entries WHERE id = (SELECT id FROM coffee_entries WHERE user_id=? AND day=? "
-                     "ORDER BY created DESC, id DESC LIMIT 1)", (u["id"], day))
-        return coffee_day(conn, u["id"], day)
+        conn.execute("DELETE FROM coffee_entries WHERE id = (SELECT id FROM coffee_entries "
+                     "WHERE user_id=? AND day=? AND kind=? ORDER BY created DESC, id DESC LIMIT 1)",
+                     (u["id"], day, kind))
+        return drink_day(conn, u["id"], day, kind)
 
 
 class WeightIn(BaseModel):
@@ -739,10 +754,11 @@ def history(days: int = 30, u=Depends(current_user)):
             "GROUP BY day ORDER BY day", (u["id"], start)).fetchall()
         water = conn.execute("SELECT day, SUM(ml) AS ml FROM water_entries WHERE user_id=? AND day>=? "
                              "GROUP BY day ORDER BY day", (u["id"], start)).fetchall()
-        coffee = conn.execute("SELECT day, SUM(ml) AS ml FROM coffee_entries WHERE user_id=? AND day>=? "
-                              "GROUP BY day ORDER BY day", (u["id"], start)).fetchall()
+        drinks = {kind: [dict(r) for r in conn.execute(
+            "SELECT day, SUM(ml) AS ml FROM coffee_entries WHERE user_id=? AND day>=? AND kind=? GROUP BY day ORDER BY day",
+            (u["id"], start, kind))] for kind in ("coffee", "tea")}
     return {"weights": [dict(r) for r in weights], "kcal": [dict(r) for r in kcal], "water": [dict(r) for r in water],
-            "coffee": [dict(r) for r in coffee]}
+            **drinks}
 
 
 # ---------------------------------------------------------------- Lebensmittel-Datenbanken

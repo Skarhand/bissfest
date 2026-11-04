@@ -200,7 +200,7 @@ function renderDay() {
 
   $("#water-text").textContent = `${fmt(d.water_ml / 1000, 2)} / ${fmt(u.water_goal_ml / 1000, 1)} l`;
   $("#water-bar").style.width = Math.min(100, (d.water_ml / u.water_goal_ml) * 100) + "%";
-  renderCoffee();
+  renderDrinks();
 
   const wi = $("#weight-input");
   if (document.activeElement !== wi) wi.value = d.weight ?? "";
@@ -841,7 +841,7 @@ async function loadHistory() {
     $("#deficit-stats").innerHTML = "";
     $("#deficit-hint").textContent = e ? "" : "Trage in den Einstellungen deine Körperdaten ein, um dein Kaloriendefizit zu sehen.";
   }
-  coffeeHistory(h);
+  drinksHistory(h);
 }
 
 /* ------------------------------------------------------------ Kaffee-Tracker (Extra) */
@@ -849,40 +849,72 @@ async function loadHistory() {
 const CAFFEINE_LIMIT = 400; // mg pro Tag, Empfehlung der EFSA für gesunde Erwachsene
 
 const CUP_ML = 150; // auf diese Menge bezieht sich "Koffein pro Tasse"
-const caffeineOf = (ml) => (ml / CUP_ML) * state.user.caffeine_mg;
+const DRINKS = {
+  coffee: { name: "Kaffee", icon: "☕", enabled: "coffee_enabled", mg: "caffeine_mg" },
+  tea: { name: "Tee", icon: "🍵", enabled: "tea_enabled", mg: "tea_caffeine_mg" },
+};
+const EMPTY_DRINK = { cups: 0, mugs: 0, ml: 0 };
+const caffeineOf = (ml, kind) => (ml / CUP_ML) * state.user[DRINKS[kind].mg];
+const enabledDrinks = () => Object.keys(DRINKS).filter((k) => state.user[DRINKS[k].enabled]);
 
-function renderCoffee() {
-  const u = state.user, c = state.data.coffee || { cups: 0, mugs: 0, ml: 0 };
-  $("#coffee-card").classList.toggle("hidden", !u.coffee_enabled);
-  if (!u.coffee_enabled) return;
-  const mg = caffeineOf(c.ml);
-  const icons = "☕".repeat(Math.min(c.cups, 8)) + `<span class="mug">${"☕".repeat(Math.min(c.mugs, 6))}</span>`;
-  const parts = [c.cups && `${c.cups} ${c.cups === 1 ? "Tasse" : "Tassen"}`, c.mugs && `${c.mugs} ${c.mugs === 1 ? "Pott" : "Pötte"}`].filter(Boolean);
-  $("#coffee-cups").innerHTML = c.ml
-    ? `<span class="cup-icons">${icons}</span><strong>${parts.join(" + ")}</strong> <span class="muted">· ${fmt(c.ml)} ml</span>`
-    : `<span class="muted">Noch kein Kaffee heute.</span>`;
-  $("#coffee-caffeine").textContent = `≈ ${fmt(mg)} mg Koffein`;
-  $("#coffee-caffeine").className = mg > CAFFEINE_LIMIT ? "neg" : "muted";
-  $("#coffee-hint").textContent = mg > CAFFEINE_LIMIT
-    ? `Über ${CAFFEINE_LIMIT} mg – mehr empfiehlt die EFSA pro Tag nicht. Vielleicht ist jetzt ein Wasser dran? 💧` : "";
-  $("#coffee-undo").disabled = !c.ml;
+function renderDrinks() {
+  const active = enabledDrinks();
+  // Koffein aus Kaffee und Tee zählt gemeinsam gegen die Tagesgrenze
+  const totalMg = active.reduce((sum, k) => sum + caffeineOf((state.data[k] || EMPTY_DRINK).ml, k), 0);
+  const over = totalMg > CAFFEINE_LIMIT;
+  Object.entries(DRINKS).forEach(([kind, d]) => {
+    const card = $(`#drink-${kind}`);
+    card.classList.toggle("hidden", !active.includes(kind));
+    if (!active.includes(kind)) return;
+    const c = state.data[kind] || EMPTY_DRINK, mg = caffeineOf(c.ml, kind);
+    const icons = d.icon.repeat(Math.min(c.cups, 8)) + `<span class="mug">${d.icon.repeat(Math.min(c.mugs, 6))}</span>`;
+    const parts = [c.cups && `${c.cups} ${c.cups === 1 ? "Tasse" : "Tassen"}`, c.mugs && `${c.mugs} ${c.mugs === 1 ? "Pott" : "Pötte"}`].filter(Boolean);
+    card.querySelector(".d-cups").innerHTML = c.ml
+      ? `<span class="cup-icons">${icons}</span><strong>${parts.join(" + ")}</strong> <span class="muted">· ${fmt(c.ml)} ml</span>`
+      : `<span class="muted">Noch kein ${d.name} heute.</span>`;
+    const caf = card.querySelector(".d-caffeine");
+    caf.textContent = `≈ ${fmt(mg)} mg Koffein`;
+    caf.className = `d-caffeine ${over && mg ? "neg" : "muted"}`;
+    // Hinweis nur einmal, auf der letzten sichtbaren Karte
+    card.querySelector(".d-hint").textContent = over && kind === active[active.length - 1]
+      ? `${active.length > 1 ? "Kaffee und Tee zusammen: " : ""}über ${CAFFEINE_LIMIT} mg Koffein – mehr empfiehlt die EFSA pro Tag nicht. Vielleicht ist jetzt ein Wasser dran? 💧`
+      : "";
+    card.querySelector(".d-undo").disabled = !c.ml;
+  });
 }
 
-async function coffeeAction(req) {
+async function drinkAction(kind, req) {
   try {
-    state.data.coffee = await req;
-    renderCoffee();
+    state.data[kind] = await req;
+    renderDrinks();
   } catch (err) { toast(err.message); }
 }
 
-function coffeeHistory(h) {
-  const show = state.user.coffee_enabled && h.coffee.length;
-  $("#coffee-history").classList.toggle("hidden", !show);
-  if (!show) return;
-  const total = h.coffee.reduce((s, r) => s + r.ml, 0), days = h.coffee.length;
-  const over = h.coffee.filter((r) => caffeineOf(r.ml) > CAFFEINE_LIMIT).length;
-  $("#coffee-stats").innerHTML = stat(`${fmt(total / days)} ml`, "Ø Kaffee/Tag") +
-    stat(`${fmt(caffeineOf(total / days))} mg`, "Ø Koffein") + stat(`${over}`, `Tage > ${CAFFEINE_LIMIT} mg`);
+function initDrinks() {
+  Object.keys(DRINKS).forEach((kind) => {
+    const card = $(`#drink-${kind}`);
+    card.querySelectorAll(".d-add").forEach((b) => (b.onclick = () => drinkAction(kind,
+      api("/coffee", { method: "POST", body: { day: state.day, size: b.dataset.size, kind } }))));
+    card.querySelector(".d-undo").onclick = () => drinkAction(kind,
+      api(`/coffee/last?day=${state.day}&kind=${kind}`, { method: "DELETE" }));
+  });
+}
+
+function drinksHistory(h) {
+  const active = enabledDrinks().filter((k) => h[k].length);
+  $("#drinks-history").classList.toggle("hidden", !active.length);
+  if (!active.length) return;
+  $("#drinks-history-title").textContent = active.map((k) => `${DRINKS[k].icon} ${DRINKS[k].name}`).join(" & ");
+  // Koffein je Tag über alle aktiven Getränke
+  const perDay = {};
+  active.forEach((k) => h[k].forEach((r) => (perDay[r.day] = (perDay[r.day] || 0) + caffeineOf(r.ml, k))));
+  const days = Object.keys(perDay).length;
+  const over = Object.values(perDay).filter((mg) => mg > CAFFEINE_LIMIT).length;
+  const avgMl = (k) => h[k].reduce((s, r) => s + r.ml, 0) / days;
+  $("#drinks-stats").innerHTML =
+    active.map((k) => stat(`${fmt(avgMl(k))} ml`, `Ø ${DRINKS[k].name}/Tag`)).join("") +
+    stat(`${fmt(Object.values(perDay).reduce((a, b) => a + b, 0) / days)} mg`, "Ø Koffein") +
+    stat(`${over}`, `Tage > ${CAFFEINE_LIMIT} mg`);
 }
 
 /* ------------------------------------------------------------ Einstellungen */
@@ -909,6 +941,9 @@ function fillSettings() {
   $("#s-coffee").checked = u.coffee_enabled;
   $("#s-caffeine").value = u.caffeine_mg;
   $("#s-coffee-details").classList.toggle("hidden", !u.coffee_enabled);
+  $("#s-tea").checked = u.tea_enabled;
+  $("#s-tea-caffeine").value = u.tea_caffeine_mg;
+  $("#s-tea-details").classList.toggle("hidden", !u.tea_enabled);
   $("#s-meals").value = u.meals_per_day;
   renderMealNameInputs(u.meals_per_day, u.meal_names.map((_, i) => u.reminders[i] || ""));
   $("#s-sex").value = u.sex ?? "";
@@ -973,6 +1008,8 @@ async function saveSettings(msgSel) {
         reminders: Object.fromEntries($$("[data-meal-time]").map((inp, i) => [String(i), inp.value]).filter(([, t]) => t)),
         coffee_enabled: $("#s-coffee").checked,
         caffeine_mg: Math.round(+$("#s-caffeine").value) || 80,
+        tea_enabled: $("#s-tea").checked,
+        tea_caffeine_mg: $("#s-tea-caffeine").value === "" ? 40 : Math.round(+$("#s-tea-caffeine").value),
       },
     });
     fillSettings();
@@ -984,14 +1021,15 @@ async function saveSettings(msgSel) {
 }
 
 function initSettings() {
-  $("#s-coffee").onchange = () => {
-    $("#s-coffee-details").classList.toggle("hidden", !$("#s-coffee").checked);
-    saveSettings("#extras-msg");
-  };
+  ["coffee", "tea"].forEach((k) => {
+    $(`#s-${k}`).onchange = () => {
+      $(`#s-${k}-details`).classList.toggle("hidden", !$(`#s-${k}`).checked);
+      saveSettings("#extras-msg");
+    };
+  });
   $("#s-caffeine").onchange = () => saveSettings("#extras-msg");
-  $("#coffee-cup").onclick = () => coffeeAction(api("/coffee", { method: "POST", body: { day: state.day, size: "cup" } }));
-  $("#coffee-mug").onclick = () => coffeeAction(api("/coffee", { method: "POST", body: { day: state.day, size: "mug" } }));
-  $("#coffee-undo").onclick = () => coffeeAction(api("/coffee/last?day=" + state.day, { method: "DELETE" }));
+  $("#s-tea-caffeine").onchange = () => saveSettings("#extras-msg");
+  initDrinks();
   ["#s-sex", "#s-birth", "#s-height", "#s-activity", "#s-pace", "#s-kcal"].forEach((id) => ($(id).oninput = renderCalc));
   $("#s-meals").onchange = () => {
     const times = $$("[data-meal-time]").map((i) => i.value);

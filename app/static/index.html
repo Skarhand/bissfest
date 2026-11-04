@@ -89,15 +89,25 @@
       </div>
     </div>
 
-    <div class="card coffee hidden" id="coffee-card">
-      <div class="card-head"><h2>☕ Kaffee</h2><span class="muted" id="coffee-caffeine"></span></div>
-      <div class="cups" id="coffee-cups"></div>
+    <div class="card coffee hidden" id="drink-coffee" data-kind="coffee">
+      <div class="card-head"><h2>☕ Kaffee</h2><span class="muted d-caffeine"></span></div>
+      <div class="cups d-cups"></div>
       <div class="coffee-row">
-        <button type="button" class="btn small" id="coffee-undo" aria-label="Letzten Kaffee zurücknehmen">−</button>
-        <button type="button" class="btn small primary" id="coffee-cup">+ Tasse <small>150 ml</small></button>
-        <button type="button" class="btn small primary" id="coffee-mug">+ Pott <small>250 ml</small></button>
+        <button type="button" class="btn small d-undo" aria-label="Letzten Kaffee zurücknehmen">−</button>
+        <button type="button" class="btn small primary d-add" data-size="cup">+ Tasse <small>150 ml</small></button>
+        <button type="button" class="btn small primary d-add" data-size="mug">+ Pott <small>250 ml</small></button>
       </div>
-      <p class="muted tiny" id="coffee-hint"></p>
+      <p class="muted tiny d-hint"></p>
+    </div>
+    <div class="card coffee hidden" id="drink-tea" data-kind="tea">
+      <div class="card-head"><h2>🍵 Tee</h2><span class="muted d-caffeine"></span></div>
+      <div class="cups d-cups"></div>
+      <div class="coffee-row">
+        <button type="button" class="btn small d-undo" aria-label="Letzten Tee zurücknehmen">−</button>
+        <button type="button" class="btn small primary d-add" data-size="cup">+ Tasse <small>150 ml</small></button>
+        <button type="button" class="btn small primary d-add" data-size="mug">+ Pott <small>250 ml</small></button>
+      </div>
+      <p class="muted tiny d-hint"></p>
     </div>
 
     <div id="meals"></div>
@@ -120,9 +130,9 @@
       <div id="deficit-stats" class="stats-grid"></div>
       <p class="muted tiny" id="deficit-hint"></p>
     </div>
-    <div class="card hidden" id="coffee-history">
-      <div class="card-head"><h2>☕ Kaffee</h2></div>
-      <div id="coffee-stats" class="stats-grid"></div>
+    <div class="card hidden" id="drinks-history">
+      <div class="card-head"><h2 id="drinks-history-title">☕ Kaffee &amp; 🍵 Tee</h2></div>
+      <div id="drinks-stats" class="stats-grid"></div>
     </div>
   </main>
 
@@ -147,6 +157,15 @@
         <p class="muted tiny">Richtwerte: Filterkaffee ≈ 90 mg, Cappuccino ≈ 75 mg, Espresso ≈ 65 mg, entkoffeiniert ≈ 3 mg.
           Ein Pott (250 ml) zählt automatisch mit der entsprechend größeren Menge. Milch und Zucker bitte als
           Lebensmittel eintragen – die Kaffee-Karte zählt keine Kalorien.</p>
+      </div>
+      <label class="switch-row">
+        <span><strong>🍵 Tee-Tracker</strong><br><span class="muted tiny">Tassen und Koffein pro Tag zählen</span></span>
+        <input type="checkbox" id="s-tea" role="switch">
+      </label>
+      <div id="s-tea-details" class="form">
+        <label>Koffein pro Tasse Tee (150 ml, in mg)<input type="number" id="s-tea-caffeine" inputmode="numeric" min="0" max="500" step="5"></label>
+        <p class="muted tiny">Richtwerte: Schwarztee ≈ 45 mg, Grüntee ≈ 30 mg, Mate ≈ 50 mg, Kräuter- und Früchtetee 0 mg.
+          Koffein aus Kaffee und Tee wird für den 400-mg-Hinweis zusammengezählt.</p>
       </div>
       <p class="ok" id="extras-msg"></p>
     </div>
