@@ -203,6 +203,16 @@
       <button class="btn">Ändern</button>
       <p class="ok" id="pw-msg"></p>
     </form>
+    <div class="card form hidden" id="donate-card">
+      <h2>☕ Spendier mir einen Kaffee</h2>
+      <p class="muted tiny">Bissfest ist kostenlos und werbefrei. Wenn dir die App hilft, freue ich mich über einen
+        Kaffee – ganz freiwillig.</p>
+      <a class="btn donate-wero" id="donate-wero" target="_blank" rel="noopener">Mit <b>wero</b> spendieren</a>
+      <details class="donate-qr" id="donate-qr">
+        <summary>Wero-QR-Code anzeigen (zum Scannen mit dem Handy)</summary>
+        <img src="/static/wero-qr.png" alt="Wero-QR-Code für einen Kaffee" width="373" height="480" loading="lazy">
+      </details>
+    </div>
     <div class="card">
       <p class="muted">Angemeldet als <strong id="s-user"></strong></p>
       <button class="btn danger" id="logout">Abmelden</button>

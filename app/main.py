@@ -32,12 +32,14 @@ COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 # Öffentliche Adresse für Links in E-Mails (leer = aus der Anfrage ermitteln)
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 VERIFY_HOURS = 24
+# "Spendier mir einen Kaffee": Wero-Bezahllink (leer = Karte ausgeblendet)
+DONATE_WERO_URL = os.environ.get("DONATE_WERO_URL", "")
 UNVERIFIED_KEEP_DAYS = 7
 SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "1.15.0"
+APP_VERSION = "1.16.1"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -351,7 +353,8 @@ class Credentials(BaseModel):
 
 @app.get("/api/config")
 def config():
-    return {"allow_registration": ALLOW_REGISTRATION and mailer.configured(), "version": APP_VERSION}
+    return {"allow_registration": ALLOW_REGISTRATION and mailer.configured(), "version": APP_VERSION,
+            "donate_wero": DONATE_WERO_URL}
 
 
 class RegisterIn(Credentials):

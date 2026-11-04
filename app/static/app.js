@@ -89,6 +89,9 @@ async function initAuth() {
     $("#settings-version").textContent = `Bissfest – Version ${cfg.version}`;
   }
   if (!cfg.allow_registration) $("#auth-toggle").classList.add("hidden");
+  // „Spendier mir einen Kaffee“ per Wero – Karte nur, wenn ein Link eingerichtet ist
+  if (cfg.donate_wero) $("#donate-wero").href = cfg.donate_wero;
+  $("#donate-card").classList.toggle("hidden", !cfg.donate_wero);
   $("#auth-toggle").onclick = () => {
     state.registerMode = !state.registerMode;
     $("#auth-email").classList.toggle("hidden", !state.registerMode);

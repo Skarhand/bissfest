@@ -21,6 +21,8 @@ services:
     environment:
       # Öffentliche Adresse für Links in E-Mails
       PUBLIC_URL: "https://bissfest.facgooder.de"
+      # „Spendier mir einen Kaffee“ per Wero (leer = Karte ausgeblendet)
+      DONATE_WERO_URL: "https://share.wero-wallet.eu/p/1/c/0iOnTczDCg"
       # Nach dem Anlegen aller Konten auf "false" setzen, damit sich niemand Fremdes registriert
       ALLOW_REGISTRATION: "true"
       # App läuft hinter HTTPS (https://bissfest.facgooder.de) – Login-Cookie nur über HTTPS senden

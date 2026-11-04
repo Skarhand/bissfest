@@ -52,6 +52,7 @@ bissfest.example.de {
 | `COOKIE_SECURE` | `false` | `true` hinter HTTPS |
 | `FDC_API_KEY` | `DEMO_KEY` | USDA-Key ([kostenlos](https://fdc.nal.usda.gov/api-key-signup), 1000 Anfragen/Std.). `DEMO_KEY` erlaubt nur ~10 Suchen pro Stunde. Leer = USDA-Suche aus |
 | `VAPID_SUBJECT` | `mailto:abnehm-app@example.org` | Kontaktadresse für Push-Dienste |
+| `DONATE_WERO_URL` | – | Wero-Link für „Spendier mir einen Kaffee“ (QR-Code: `app/static/wero-qr.png`), leer = Karte aus |
 | `BACKUP_TIME` | `03:00` | Uhrzeit der nächtlichen Sicherung, leer = aus |
 | `BACKUP_KEEP_DAYS` | `30` | Aufbewahrungsdauer der Backups |
 | `OFF_COUNTRY` | `de` | Länder-Subdomain für die Open-Food-Facts-Fallback-Suche |
@@ -113,6 +114,8 @@ docker compose start
 - Nährwertdaten: Open Food Facts (ODbL), USDA FoodData Central (Public Domain).
 
 ## Versionen
+- **1.16.1** – Spenden nur noch per Wero (PayPal entfernt)
+- **1.16.0** – „Spendier mir einen Kaffee“ mit Wero (Link + QR-Code), PayPal vorbereitet
 - **1.15.0** – Tee-Tracker (zuschaltbar wie Kaffee), Koffein aus Kaffee und Tee gemeinsam gegen 400 mg
 - **1.14.0** – Kaffee-Tracker: Tasse (150 ml) oder Pott (250 ml), Koffein nach Menge, letzten Kaffee zurücknehmen
 - **1.13.0** – Kaffee-Tracker als zuschaltbares Extra (Tassen, Koffein, Verlauf)
