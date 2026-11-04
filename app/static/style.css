@@ -345,3 +345,4 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .goal-hint { border: 2px solid var(--accent); background: var(--accent-soft); gap: 8px; }
 .goal-hint p { margin: 0; }
 .goal-hint .btn-row .btn { flex: 1; }
+#switch-server { display: block; text-align: center; text-decoration: none; margin-top: 8px; }

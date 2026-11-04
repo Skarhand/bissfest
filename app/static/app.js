@@ -99,9 +99,16 @@ async function initAuth() {
     $("#auth-version").textContent = `Version ${cfg.version} · `;
   }
   if (!cfg.allow_registration) $("#auth-toggle").classList.add("hidden");
+  if (cfg.source_url) {
+    $("#source-link a").href = cfg.source_url;
+    $("#source-link").classList.remove("hidden");
+  }
   // Android-App anbieten: nur im Android-Browser, nicht in der installierten App/PWA
   const standalone = matchMedia("(display-mode: standalone)").matches || document.referrer.startsWith("android-app://");
-  $("#android-card").classList.toggle("hidden", !(cfg.android_apk && /Android/i.test(navigator.userAgent) && !standalone));
+  $("#android-card").classList.toggle("hidden", !(cfg.android_apk_url && /Android/i.test(navigator.userAgent) && !standalone));
+  if (cfg.android_apk_url) $("#android-download").href = cfg.android_apk_url;
+  $("#android-server").textContent = location.origin;
+  $("#switch-server").classList.toggle("hidden", appMode() !== "Android-App");
   // „Spendier mir einen Kaffee“ per Wero – Karte nur, wenn ein Link eingerichtet ist
   if (cfg.donate_wero) $("#donate-wero").href = cfg.donate_wero;
   $("#donate-card").classList.toggle("hidden", !cfg.donate_wero);

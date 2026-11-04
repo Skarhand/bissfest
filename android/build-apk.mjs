@@ -14,8 +14,8 @@ import {
   AndroidSdkTools, Config, ConsoleLog, GradleWrapper, JdkHelper, TwaGenerator, TwaManifest,
 } from "@bubblewrap/core";
 
-const VERSION_NAME = "2.0.0";
-const VERSION_CODE = 20000; // muss bei jeder neuen APK steigen (2.0.1 -> 20001, 2.1.0 -> 20100 …)
+const VERSION_NAME = "2.5.0";
+const VERSION_CODE = 20500; // muss bei jeder neuen APK steigen (2.5.1 -> 20501, 2.6.0 -> 20600 …)
 const PACKAGE_ID = "de.facgooder.bissfest";
 const WEB_MANIFEST = "https://bissfest.facgooder.de/static/manifest.json";
 
@@ -48,6 +48,51 @@ Object.assign(twa, {
 fs.rmSync(projectDir, { recursive: true, force: true });
 await new TwaGenerator().createTwaProject(projectDir, twa, log);
 await twa.saveToFile(path.join(projectDir, "twa-manifest.json"));
+
+// 2b) Server-Abfrage beim ersten Start einbauen: SetupActivity wird Einstieg der App und öffnet die TWA
+// mit der gewählten Adresse. Jeder Bissfest-Server liefert assetlinks.json mit diesem Paket aus.
+const javaDir = path.join(projectDir, "app/src/main/java", ...PACKAGE_ID.split("."));
+fs.copyFileSync(path.join(here, "overlay/SetupActivity.java"), path.join(javaDir, "SetupActivity.java"));
+const patch = (file, pairs) => {
+  let text = fs.readFileSync(file, "utf8");
+  for (const [from, to] of pairs) {
+    if (!text.includes(from)) throw new Error(`Vorlage geändert, nicht gefunden in ${file}: ${from}`);
+    text = text.replace(from, to);
+  }
+  fs.writeFileSync(file, text);
+};
+patch(path.join(javaDir, "LauncherActivity.java"), [[
+  "Uri uri = super.getLaunchingUrl();",
+  `Uri uri = super.getLaunchingUrl();
+
+        // Gewählter Bissfest-Server (SetupActivity); direkte Links behalten ihr Ziel
+        String server = SetupActivity.serverUrl(this);
+        if (server != null && getIntent().getData() == null) {
+            return Uri.parse(server + "/");
+        }`,
+]]);
+const launcherFilter = `<intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>`;
+patch(path.join(projectDir, "app/src/main/AndroidManifest.xml"), [
+  [launcherFilter, ""],
+  ['<activity android:name="LauncherActivity"', `<activity android:name=".SetupActivity"
+            android:label="@string/launcherName"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:exported="true">
+            ${launcherFilter}
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bissfest" android:host="setup" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name="LauncherActivity"`],
+  ["<application", '<uses-permission android:name="android.permission.INTERNET" />\n\n    <application'],
+]);
 
 // 3) Bauen, ausrichten, signieren
 const config = new Config(jdkPath, sdkPath);

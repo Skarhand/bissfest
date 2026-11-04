@@ -233,7 +233,7 @@ function renderSystem(s) {
     ["Mailversand", `${yes(r.mail)} ${esc(s.mail_from || "nicht eingerichtet")}`],
     ["Feedback an", esc(s.feedback_to || "–")],
     ["Push-Schlüssel", yes(s.push_configured)],
-    ["Android-APK", s.android_apk ? "✅ hinterlegt" : "❌ nicht hinterlegt"],
+    ["Android-APK", s.android_apk ? "✅ eigene Datei hinterlegt" : "offizielle APK (Download von bissfest.facgooder.de)"],
   ];
   $("#sysinfo").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
 }

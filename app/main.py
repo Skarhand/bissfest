@@ -37,20 +37,26 @@ COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 VERIFY_HOURS = 24
 # "Spendier mir einen Kaffee": Wero-Bezahllink (leer = Karte ausgeblendet)
-DONATE_WERO_URL = os.environ.get("DONATE_WERO_URL", "")
+DONATE_WERO_URL = "https://share.wero-wallet.eu/p/1/c/0iOnTczDCg"  # fest vorgegeben, siehe NOTICE.md
 # Android-App (Trusted Web Activity): Paketname + SHA-256 des Signaturzertifikats für assetlinks.json,
 # die APK selbst liegt im Datenordner (nicht im Image/git) und wird unter /download/bissfest.apk angeboten
-ANDROID_PACKAGE = os.environ.get("ANDROID_PACKAGE", "")
-ANDROID_CERT_SHA256 = os.environ.get("ANDROID_CERT_SHA256", "")
+# Standard = offizielle Bissfest-App: Dadurch läuft sie auf jedem Bissfest-Server im Vollbild. Nur wer eine
+# eigene APK baut, setzt hier eigene Werte.
+ANDROID_PACKAGE = os.environ.get("ANDROID_PACKAGE", "de.facgooder.bissfest")
+ANDROID_CERT_SHA256 = os.environ.get(
+    "ANDROID_CERT_SHA256", "6E:84:21:EC:C2:27:3B:9C:4F:24:CD:2D:5F:2B:C9:B9:55:C7:96:4C:5E:3D:BA:91:1A:35:11:10:A8:13:27:3E")
+OFFICIAL_APK_URL = "https://bissfest.facgooder.de/download/bissfest.apk"
 APK_PATH = Path(DB_PATH).parent / "downloads" / "bissfest.apk"
 # Empfänger für Feature Requests aus der App
-FEEDBACK_TO = os.environ.get("FEEDBACK_TO", "service@facgooder.de")
+FEEDBACK_TO = "service@facgooder.de"  # fest vorgegeben, siehe NOTICE.md
+# Quellcode-Link in den Einstellungen (AGPL-3.0 § 13: Pflicht beim Betrieb geänderter Fassungen)
+SOURCE_URL = os.environ.get("SOURCE_URL", "")
 UNVERIFIED_KEEP_DAYS = 7
 SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.4.2"
+APP_VERSION = "2.5.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -409,7 +415,9 @@ def is_admin(u: sqlite3.Row) -> bool:
 @app.get("/api/config")
 def config():
     return {"allow_registration": registration_open(), "version": APP_VERSION,
-            "donate_wero": DONATE_WERO_URL, "android_apk": APK_PATH.exists()}
+            "donate_wero": DONATE_WERO_URL, "source_url": SOURCE_URL,
+            # eigene APK im Datenordner, sonst die offizielle (fragt beim ersten Start nach dem Server)
+            "android_apk_url": "/download/bissfest.apk" if APK_PATH.exists() else OFFICIAL_APK_URL}
 
 
 class RegisterIn(Credentials):

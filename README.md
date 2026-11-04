@@ -52,9 +52,8 @@ bissfest.example.de {
 | `COOKIE_SECURE` | `false` | `true` hinter HTTPS |
 | `FDC_API_KEY` | `DEMO_KEY` | USDA-Key ([kostenlos](https://fdc.nal.usda.gov/api-key-signup), 1000 Anfragen/Std.). `DEMO_KEY` erlaubt nur ~10 Suchen pro Stunde. Leer = USDA-Suche aus |
 | `VAPID_SUBJECT` | `mailto:abnehm-app@example.org` | Kontaktadresse für Push-Dienste |
-| `DONATE_WERO_URL` | – | Wero-Link für „Spendier mir einen Kaffee“ (QR-Code: `app/static/wero-qr.png`), leer = Karte aus |
-| `FEEDBACK_TO` | `service@facgooder.de` | Empfänger für Feature Requests aus der App |
-| `ANDROID_PACKAGE` / `ANDROID_CERT_SHA256` | – | Paketname und Zertifikats-Fingerabdruck der Android-App (assetlinks.json) |
+| `SOURCE_URL` | – | Link zum Quellcode in den Einstellungen (Pflicht bei geänderten Fassungen, AGPL § 13) |
+| `ANDROID_PACKAGE` / `ANDROID_CERT_SHA256` | offizielle App | Nur für selbst signierte APKs ändern (assetlinks.json) |
 | `ADMIN_USERS` | – | Benutzernamen mit Zugriff auf `/admin` (kommagetrennt) |
 | `BACKUP_TIME` | `03:00` | Uhrzeit der nächtlichen Sicherung, leer = aus |
 | `BACKUP_KEEP_DAYS` | `30` | Aufbewahrungsdauer der Backups |
@@ -79,20 +78,21 @@ Die passende Integration hat ein eigenes Repository: **bissfest-homeassistant**
 (https://github.com/Skarhand/bissfest-homeassistant, installierbar über HACS).
 
 ## Android-App (APK)
-Die Android-App ist eine Trusted Web Activity: eine echte App mit eigenem Symbol, die Bissfest von
-https://bissfest.facgooder.de im Vollbild lädt. Web-Updates kommen daher automatisch in der App an; eine neue APK
-ist nur nötig, wenn sich Name, Icon, Domain oder Android-Einstellungen ändern.
+Die offizielle Android-App (Trusted Web Activity) funktioniert mit **jedem Bissfest-Server**: Beim ersten Start fragt
+sie nach der Server-Adresse (HTTPS), prüft sie und öffnet Bissfest danach im Vollbild. Wechseln lässt sich der Server
+über Einstellungen → „Server wechseln“ oder lange auf das App-Symbol tippen. Die iOS-Web-App läuft ohnehin auf jedem Server.
 
-Bauen (JDK 17, Android SDK mit `platforms;android-36` und `build-tools;36.1.0`):
+Jeder Server liefert dafür `/.well-known/assetlinks.json` mit Paketname und Zertifikat der offiziellen App aus
+(Standardwerte von `ANDROID_PACKAGE`/`ANDROID_CERT_SHA256`). In den Einstellungen sehen Android-Nutzer einen
+Download-Knopf; ohne eigene Datei zeigt er auf die offizielle APK. Web-Updates kommen automatisch in der App an.
+
+Eigene APK bauen (JDK 17, Android SDK mit `platforms;android-36` und `build-tools;36.1.0`):
 ```bash
 cd android && npm install && npm run build      # -> android/dist/bissfest-<version>.apk
 ```
-Der Signaturschlüssel liegt **außerhalb des Repos** in `../android-signing/` (Keystore + Passwort, nicht verlieren –
-sonst lassen sich Updates nicht mehr installieren). Version und `VERSION_CODE` stehen in `android/build-apk.mjs`.
-
-Veröffentlichen: APK als `data/downloads/bissfest.apk` auf den Server legen – Android-Nutzer sehen dann in den
-Einstellungen „Android-App herunterladen“. `/.well-known/assetlinks.json` (aus `ANDROID_PACKAGE` und
-`ANDROID_CERT_SHA256`) bestätigt, dass die App zur Domain gehört; ohne sie zeigt Android eine Adressleiste.
+Der Signaturschlüssel liegt **außerhalb des Repos** in `../android-signing/`. Version und `VERSION_CODE` stehen in
+`android/build-apk.mjs`, der Startbildschirm in `android/overlay/SetupActivity.java`. Eine eigene APK als
+`data/downloads/bissfest.apk` ablegen; wer selbst signiert, setzt `ANDROID_PACKAGE` und `ANDROID_CERT_SHA256`.
 
 ## Registrierung mit E-Mail-Bestätigung
 Neue Konten brauchen eine E-Mail-Adresse. Bissfest schickt einen Bestätigungslink (24 Stunden gültig);
@@ -147,10 +147,17 @@ docker compose start
 
 ## Hinweise
 - Barcode-Scanner: Android/Chrome nutzt den eingebauten `BarcodeDetector`, alle anderen (iPhone) die
-  Bibliothek ZXing 0.21.3 (MIT, liegt lokal unter `app/static/vendor/`). Die Kamera braucht HTTPS.
+  Bibliothek ZXing 0.21.3 (Apache-2.0, liegt lokal unter `app/static/vendor/`). Die Kamera braucht HTTPS.
 - Nährwertdaten: Open Food Facts (ODbL), USDA FoodData Central (Public Domain).
 
+## Lizenz
+Bissfest ist freie Software unter der **GNU AGPL-3.0** ([LICENSE](LICENSE)). Name, Logo und App-Icon sind
+davon ausgenommen; geänderte Fassungen brauchen einen eigenen Namen. Der Urheberhinweis muss erhalten bleiben.
+Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und fremde Bestandteile: [NOTICE.md](NOTICE.md).
+
 ## Versionen
+- **2.5.0** – Android-App fragt beim ersten Start nach dem Server und läuft mit jeder Bissfest-Installation
+- **2.4.3** – Lizenz AGPL-3.0, NOTICE.md, Spendenlink und Feedback-Adresse fest im Code, Quellcode-Link (`SOURCE_URL`)
 - **2.4.2** – App-Version auf der Anmeldeseite
 - **2.4.1** – Tippfehler in der E-Mail-Adresse lässt sich vor der Bestätigung korrigieren
 - **2.4.0** – Einrichtungs-Assistent für das persönliche Kalorienziel, Hinweis solange nur Beispielwerte gesetzt sind
