@@ -59,6 +59,12 @@ bissfest.example.de {
 | `BACKUP_KEEP_DAYS` | `30` | Aufbewahrungsdauer der Backups |
 | `OFF_COUNTRY` | `de` | Länder-Subdomain für die Open-Food-Facts-Fallback-Suche |
 
+## Home Assistant
+Bissfest hat eine REST-API (`/api/v1`) für Home Assistant und andere Werkzeuge. Token erzeugen unter
+**Einstellungen → 🏠 Home Assistant**, Details in [docs/home-assistant-api.md](docs/home-assistant-api.md).
+Die passende Integration hat ein eigenes Repository: **bissfest-homeassistant**
+(https://github.com/Skarhand/bissfest-homeassistant, installierbar über HACS).
+
 ## Android-App (APK)
 Die Android-App ist eine Trusted Web Activity: eine echte App mit eigenem Symbol, die Bissfest von
 https://bissfest.facgooder.de im Vollbild lädt. Web-Updates kommen daher automatisch in der App an; eine neue APK
@@ -132,6 +138,7 @@ docker compose start
 - Nährwertdaten: Open Food Facts (ODbL), USDA FoodData Central (Public Domain).
 
 ## Versionen
+- **2.1.0** – REST-API `/api/v1` mit persönlichen Tokens für Home Assistant
 - **2.0.0** – Echte Android-App (APK, Trusted Web Activity), Download in der App, assetlinks.json
 - **1.17.0** – Feature Request aus der App per Mail an service@facgooder.de (zusätzlich gespeichert)
 - **1.16.1** – Spenden nur noch per Wero (PayPal entfernt)

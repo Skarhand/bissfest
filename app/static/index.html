@@ -203,6 +203,23 @@
       <button class="btn">Ändern</button>
       <p class="ok" id="pw-msg"></p>
     </form>
+    <div class="card form" id="ha-card">
+      <h2>🏠 Home Assistant</h2>
+      <p class="muted tiny">Verbinde Bissfest mit Home Assistant: Kalorien, Wasser, Gewicht, Kaffee &amp; Tee als Sensoren,
+        Knöpfe und Automationen. Erzeuge dafür einen Token und trage ihn zusammen mit der Adresse
+        <code id="ha-url"></code> in der Bissfest-Integration ein.</p>
+      <ul class="token-list" id="ha-tokens"></ul>
+      <div class="token-new hidden" id="ha-new-token">
+        <strong>Dein neuer Token – jetzt kopieren, er wird nur einmal angezeigt:</strong>
+        <code id="ha-token-value"></code>
+        <button type="button" class="btn small" id="ha-token-copy">📋 Kopieren</button>
+      </div>
+      <form class="search-row" id="ha-token-form">
+        <input id="ha-token-name" placeholder="Name, z. B. Home Assistant" maxlength="60" required>
+        <button class="btn primary">Token erzeugen</button>
+      </form>
+      <p class="err" id="ha-err"></p>
+    </div>
     <div class="card form hidden" id="android-card">
       <h2>📱 Bissfest als Android-App</h2>
       <p class="muted tiny">Eigenes App-Symbol, Vollbild ohne Browserleiste, Erinnerungen und Barcode-Scanner wie gewohnt.

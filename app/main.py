@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -46,7 +46,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -182,6 +182,15 @@ CREATE TABLE IF NOT EXISTS feedback (
     text TEXT NOT NULL,
     mailed INTEGER NOT NULL DEFAULT 0,
     created INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS api_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    prefix TEXT NOT NULL,
+    created INTEGER NOT NULL,
+    last_used INTEGER
 );
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     endpoint TEXT PRIMARY KEY,
@@ -1115,6 +1124,159 @@ def delete_template(tpl_id: int, u=Depends(current_user)):
     with db() as conn:
         conn.execute("DELETE FROM meal_templates WHERE id=? AND user_id=?", (tpl_id, u["id"]))
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- API für Home Assistant (/api/v1)
+# Doku: docs/home-assistant-api.md. Anmeldung per persönlichem Token (Authorization: Bearer bf_…),
+# Tokens werden nur als SHA-256 gespeichert und in den Einstellungen verwaltet.
+
+API_RATE_LIMIT = 60  # Anfragen pro Minute und Token
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def token_user(request: Request) -> sqlite3.Row:
+    auth = request.headers.get("authorization", "")
+    token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    if not token.startswith("bf_"):
+        raise HTTPException(401, "API-Token fehlt (Authorization: Bearer bf_…)")
+    with db() as conn:
+        row = conn.execute("SELECT t.id AS token_id, t.last_used, u.* FROM api_tokens t "
+                           "JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?", (_token_hash(token),)).fetchone()
+        if not row:
+            raise HTTPException(401, "API-Token ungültig oder widerrufen")
+        if not row["last_used"] or row["last_used"] < time.time() - 60:
+            conn.execute("UPDATE api_tokens SET last_used=? WHERE id=?", (int(time.time()), row["token_id"]))
+    throttle(f"api:{row['token_id']}", limit=API_RATE_LIMIT, window=60)
+    return row
+
+
+class TokenIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
+@app.get("/api/tokens")
+def list_tokens(u=Depends(current_user)):
+    with db() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT id, name, prefix, created, last_used FROM api_tokens WHERE user_id=? ORDER BY created DESC",
+            (u["id"],))]
+
+
+@app.post("/api/tokens")
+def create_token(t: TokenIn, u=Depends(current_user)):
+    """Neuen Token erzeugen – der Klartext wird nur in dieser Antwort einmal zurückgegeben."""
+    token = "bf_" + secrets.token_urlsafe(32)
+    with db() as conn:
+        if conn.execute("SELECT COUNT(*) FROM api_tokens WHERE user_id=?", (u["id"],)).fetchone()[0] >= 10:
+            raise HTTPException(400, "Höchstens 10 Tokens pro Konto – bitte erst einen widerrufen")
+        tid = conn.execute("INSERT INTO api_tokens (user_id, name, token_hash, prefix, created) VALUES (?,?,?,?,?)",
+                           (u["id"], t.name.strip(), _token_hash(token), token[:7], int(time.time()))).lastrowid
+    return {"id": tid, "name": t.name.strip(), "token": token}
+
+
+@app.delete("/api/tokens/{token_id}")
+def revoke_token(token_id: int, u=Depends(current_user)):
+    with db() as conn:
+        conn.execute("DELETE FROM api_tokens WHERE id=? AND user_id=?", (token_id, u["id"]))
+    return {"ok": True}
+
+
+def energy_estimate(u: sqlite3.Row, kg: float | None) -> int | None:
+    """Gesamtumsatz nach Mifflin-St Jeor × Aktivität (gleiche Formel wie in der App, app.js energy())."""
+    if not (u["sex"] and u["birth_year"] and u["height_cm"] and u["activity"] and kg):
+        return None
+    age = date.today().year - u["birth_year"]
+    bmr = 10 * kg + 6.25 * u["height_cm"] - 5 * age + (5 if u["sex"] == "m" else -161)
+    return round(bmr * u["activity"])
+
+
+def build_status(u: sqlite3.Row, day: str) -> dict:
+    d = get_day(day, u)
+    with db() as conn:
+        latest = conn.execute("SELECT day, kg FROM weights WHERE user_id=? AND day<=? ORDER BY day DESC LIMIT 1",
+                              (u["id"], day)).fetchone()
+        start30 = (date.fromisoformat(day) - timedelta(days=30)).isoformat()
+        first30 = conn.execute("SELECT day, kg FROM weights WHERE user_id=? AND day>=? AND day<=? ORDER BY day LIMIT 1",
+                               (u["id"], start30, day)).fetchone()
+    if first30 and latest and first30["day"] == latest["day"]:
+        first30 = None  # nur eine Wägung im Zeitraum – keine Veränderung berechenbar
+    eaten = round(d["totals"]["kcal"])
+    burned = energy_estimate(u, latest["kg"] if latest else None)
+    reminders = json.loads(u["reminders"] or "{}")
+    meals = [{"index": i, "name": name,
+              "kcal": round(sum(f["kcal"] for f in d["foods"] if f["meal"] == i)),
+              "entries": sum(1 for f in d["foods"] if f["meal"] == i),
+              "reminder": reminders.get(str(i))}
+             for i, name in enumerate(MEAL_NAMES[:u["meals_per_day"]])]
+    drinks = {}
+    for kind, enabled, mg in (("coffee", u["coffee_enabled"], u["caffeine_mg"]), ("tea", u["tea_enabled"], u["tea_caffeine_mg"])):
+        c = d[kind]
+        drinks[kind] = {"enabled": bool(enabled), "cups": c["cups"], "mugs": c["mugs"], "ml": c["ml"],
+                        "caffeine_mg": round(c["ml"] / COFFEE_SIZES["cup"] * mg)}
+    return {
+        "app_version": APP_VERSION, "user": u["username"], "date": day,
+        "calories": {"eaten": eaten, "goal": u["kcal_goal"], "remaining": u["kcal_goal"] - eaten,
+                     "burned_estimate": burned, "deficit": burned - eaten if burned is not None else None},
+        "nutrients": {k: d["totals"][k] for k in ("protein", "carbs", "sugar", "fat")},
+        "meals": meals,
+        "water": {"ml": d["water_ml"], "goal_ml": u["water_goal_ml"],
+                  "percent": round(d["water_ml"] / u["water_goal_ml"] * 100) if u["water_goal_ml"] else 0},
+        "weight": {"today_kg": d["weight"], "latest_kg": latest["kg"] if latest else None,
+                   "latest_date": latest["day"] if latest else None, "target_kg": u["target_weight"],
+                   "change_30d_kg": round(latest["kg"] - first30["kg"], 1) if latest and first30 else None},
+        **drinks,
+        "caffeine_total_mg": sum(v["caffeine_mg"] for v in drinks.values() if v["enabled"]),
+    }
+
+
+@app.get("/api/v1/status")
+def api_status(date_: str | None = Query(default=None, alias="date"), u=Depends(token_user)):
+    return build_status(u, check_day(date_) if date_ else date.today().isoformat())
+
+
+class ApiWaterIn(BaseModel):
+    ml: int = Field(ge=-3000, le=3000)
+
+
+@app.post("/api/v1/water")
+def api_water(w: ApiWaterIn, u=Depends(token_user)):
+    day = date.today().isoformat()
+    add_water(WaterIn(day=day, ml=w.ml), u)
+    return build_status(u, day)
+
+
+class ApiWeightIn(BaseModel):
+    kg: float = Field(ge=20, le=400)
+    date: str | None = None
+
+
+@app.post("/api/v1/weight")
+def api_weight(w: ApiWeightIn, u=Depends(token_user)):
+    day = check_day(w.date) if w.date else date.today().isoformat()
+    set_weight(day, WeightIn(kg=w.kg), u)
+    return build_status(u, day)
+
+
+class ApiDrinkIn(BaseModel):
+    kind: DrinkKind
+    size: Literal["cup", "mug"] = "cup"
+
+
+@app.post("/api/v1/drink")
+def api_drink(c: ApiDrinkIn, u=Depends(token_user)):
+    day = date.today().isoformat()
+    add_drink(DrinkIn(day=day, size=c.size, kind=c.kind), u)
+    return build_status(u, day)
+
+
+@app.delete("/api/v1/drink/last")
+def api_undo_drink(kind: DrinkKind, u=Depends(token_user)):
+    day = date.today().isoformat()
+    undo_drink(day, kind, u)
+    return build_status(u, day)
 
 
 # ---------------------------------------------------------------- Feature Requests

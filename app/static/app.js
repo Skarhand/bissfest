@@ -1184,6 +1184,54 @@ function initTheme() {
   darkQuery.addEventListener("change", () => { if (getTheme() === "system") applyTheme("system"); });
 }
 
+/* ------------------------------------------------------------ Home Assistant (API-Tokens) */
+
+const fmtDateTime = (ts) => new Date(ts * 1000).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+async function loadTokens() {
+  const list = $("#ha-tokens");
+  const tokens = await api("/tokens").catch(() => []);
+  list.innerHTML = tokens.length ? "" : `<li class="muted tiny">Noch kein Token erzeugt.</li>`;
+  tokens.forEach((t) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<div><strong>${esc(t.name)}</strong> <code>${esc(t.prefix)}…</code>
+      <div class="muted tiny">erstellt ${fmtDateTime(t.created)} · ${t.last_used ? "zuletzt genutzt " + fmtDateTime(t.last_used) : "noch nicht genutzt"}</div></div>
+      <button type="button" class="btn small danger">Widerrufen</button>`;
+    li.querySelector("button").onclick = async () => {
+      if (!confirm(`Token „${t.name}“ widerrufen? Home Assistant verliert dann den Zugriff.`)) return;
+      await api("/tokens/" + t.id, { method: "DELETE" });
+      $("#ha-new-token").classList.add("hidden");
+      loadTokens();
+    };
+    list.appendChild(li);
+  });
+}
+
+function initHomeAssistant() {
+  $("#ha-url").textContent = location.origin;
+  $("#ha-token-form").onsubmit = async (e) => {
+    e.preventDefault();
+    $("#ha-err").textContent = "";
+    try {
+      const r = await api("/tokens", { method: "POST", body: { name: $("#ha-token-name").value.trim() } });
+      $("#ha-token-value").textContent = r.token;
+      $("#ha-new-token").classList.remove("hidden");
+      $("#ha-token-name").value = "";
+      loadTokens();
+    } catch (err) { $("#ha-err").textContent = err.message; }
+  };
+  $("#ha-token-copy").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText($("#ha-token-value").textContent);
+      toast("Token kopiert");
+    } catch {
+      // Fallback (z. B. ohne Clipboard-Berechtigung): Text markieren, damit man ihn manuell kopieren kann
+      getSelection().selectAllChildren($("#ha-token-value"));
+      toast("Bitte manuell kopieren");
+    }
+  };
+}
+
 /* ------------------------------------------------------------ Feature Request */
 
 function closeFeedback() {
@@ -1234,6 +1282,7 @@ function showView(view) {
   $("#view-" + view).classList.remove("hidden");
   $(".topbar").classList.toggle("hidden", view !== "today");
   if (view === "history") loadHistory();
+  if (view === "settings") loadTokens();
   window.scrollTo(0, 0);
 }
 
@@ -1259,6 +1308,7 @@ function initNav() {
   initPush();
   initTheme();
   initFeedback();
+  initHomeAssistant();
   initNav();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
   try { await startApp(); } catch { showAuth(); }
