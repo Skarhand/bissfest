@@ -54,7 +54,7 @@ Alle Schreib-Endpunkte antworten mit dem vollständigen Status wie oben.
 
 ## Beispiel
 ```bash
-curl -H "Authorization: Bearer $BISSFEST_TOKEN" https://bissfest.facgooder.de/api/v1/status
+curl -H "Authorization: Bearer $BISSFEST_TOKEN" https://bissfest.example.de/api/v1/status
 curl -X POST -H "Authorization: Bearer $BISSFEST_TOKEN" -H "Content-Type: application/json" \
-     -d '{"ml": 250}' https://bissfest.facgooder.de/api/v1/water
+     -d '{"ml": 250}' https://bissfest.example.de/api/v1/water
 ```

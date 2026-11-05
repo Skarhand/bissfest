@@ -7,37 +7,32 @@ services:
       - "7854:8000"
     volumes:
       - ./data:/data
-      # Netzlaufwerk (NFS) für die nächtlichen Backups. Der Elternordner wird mit "rslave" eingebunden,
-      # damit ein später (neu) gemountetes NFS-Laufwerk auch im laufenden Container sichtbar wird.
-      - type: bind
-        source: /mnt/abnehm-app
-        target: /mnt/abnehm-app
-        bind:
-          propagation: rslave
-    # SMTP-Zugangsdaten für die Bestätigungsmails (nur auf dem Server, nicht im git) – Vorlage: .env.example
+      # Ziel der nächtlichen Backups, gern auch ein Netzlaufwerk (siehe README, Abschnitt Backup)
+      - ./backup:/backup
+    # SMTP-Zugangsdaten für die Bestätigungsmails (nicht ins git) – Vorlage: .env.example
     env_file:
       - path: .env
         required: false
+    # Eigene Werte am besten in eine docker-compose.override.yml schreiben, die Compose automatisch einliest.
     environment:
-      # Öffentliche Adresse für Links in E-Mails
-      PUBLIC_URL: "https://bissfest.facgooder.de"
-      # Link zum Quellcode, erscheint in den Einstellungen (Pflicht bei geänderten Fassungen, AGPL § 13)
-      SOURCE_URL: ""
+      # Öffentliche Adresse für Links in E-Mails, z. B. https://bissfest.example.de
+      PUBLIC_URL: ""
+      # Link zum Quellcode, erscheint in den Einstellungen (bei geänderten Fassungen anpassen, AGPL § 13)
+      SOURCE_URL: "https://github.com/Skarhand/bissfest"
       # Nach dem Anlegen aller Konten auf "false" setzen, damit sich niemand Fremdes registriert
       ALLOW_REGISTRATION: "true"
       # Höchstzahl an Konten (0 = unbegrenzt), im Admin-Dashboard änderbar
-      MAX_USERS: "15"
+      MAX_USERS: "0"
       # Admins für https://…/admin (Benutzernamen, kommagetrennt)
-      ADMIN_USERS: "sebastian"
-      # App läuft hinter HTTPS (https://bissfest.facgooder.de) – Login-Cookie nur über HTTPS senden
-      COOKIE_SECURE: "true"
+      ADMIN_USERS: ""
+      # Hinter HTTPS auf "true" setzen, damit das Login-Cookie nur über HTTPS gesendet wird
+      COOKIE_SECURE: "false"
       # Kostenloser Key: https://fdc.nal.usda.gov/api-key-signup  (DEMO_KEY = stark limitiert, leer = USDA aus)
       FDC_API_KEY: "DEMO_KEY"
       OFF_COUNTRY: "de"
       TZ: "Europe/Berlin"
-      BACKUP_DIR: "/mnt/abnehm-app/backup"
       # Uhrzeit der nächtlichen Sicherung (leer = aus) und wie lange Backups aufbewahrt werden
       BACKUP_TIME: "03:00"
       BACKUP_KEEP_DAYS: "30"
       # Kontaktadresse für die Push-Dienste (Apple/Google), Pflichtangabe für Push-Nachrichten
-      VAPID_SUBJECT: "https://bissfest.facgooder.de"
+      VAPID_SUBJECT: "mailto:admin@example.org"

@@ -9,3 +9,7 @@ __pycache__/
 
 # SMTP-Zugangsdaten
 .env
+
+# Einstellungen des eigenen Servers und lokale Backups
+docker-compose.override.yml
+backup/

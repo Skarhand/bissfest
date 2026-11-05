@@ -24,12 +24,28 @@ Selbst gehostete Web-App (PWA) zum Abnehmen – läuft im Browser auf iPhone, An
 ## Starten
 
 ```bash
-docker compose up -d --build
+git clone https://github.com/Skarhand/bissfest.git
 ```
 
-Dann `http://<server-ip>:7854` öffnen und ein Konto anlegen.
+```bash
+cd bissfest && docker compose up -d --build
+```
 
-Produktiv läuft Bissfest unter **https://bissfest.facgooder.de** (Reverse Proxy auf Port 7854).
+Dann `http://<server-ip>:7854` öffnen. Für neue Konten braucht Bissfest einen Mailzugang, siehe
+[Registrierung mit E-Mail-Bestätigung](#registrierung-mit-e-mail-bestätigung).
+
+Eigene Einstellungen gehören in eine `docker-compose.override.yml` neben der `docker-compose.yml`. Compose liest sie
+automatisch ein, und sie bleibt bei Updates unberührt:
+
+```yaml
+services:
+  abnehm-app:
+    environment:
+      PUBLIC_URL: "https://bissfest.example.de"
+      ADMIN_USERS: "dein-benutzername"
+      COOKIE_SECURE: "true"
+      VAPID_SUBJECT: "mailto:du@example.de"
+```
 
 ## Auf dem Handy installieren
 
@@ -40,7 +56,7 @@ Produktiv läuft Bissfest unter **https://bissfest.facgooder.de** (Reverse Proxy
 
 Für Logins übers Internet und den Kamera-Barcode-Scanner wird HTTPS benötigt. Am einfachsten
 einen Reverse Proxy (Caddy, Nginx Proxy Manager, Traefik) vor Port 7854 setzen und danach
-`COOKIE_SECURE: "true"` in der `docker-compose.yml` eintragen.
+`COOKIE_SECURE: "true"` setzen.
 
 Beispiel Caddy:
 
@@ -68,8 +84,8 @@ bissfest.example.de {
 
 ## Admin-Dashboard
 
-Unter `/admin` (z. B. https://bissfest.facgooder.de/admin) für alle Benutzer aus `ADMIN_USERS`
-(in der `docker-compose.yml`, kommagetrennt). Anmeldung mit dem normalen Bissfest-Konto.
+Unter `/admin` (z. B. https://bissfest.example.de/admin) für alle Benutzer aus `ADMIN_USERS`
+(kommagetrennt). Anmeldung mit dem normalen Bissfest-Konto.
 
 - **Übersicht:** Nutzer, Aktivität, Einträge, offenes Feedback, Diagramm der letzten 30/90 Tage
 - **Nutzer:** Konten mit letzter Aktivität; Bestätigungsmail erneut senden, manuell bestätigen, löschen
@@ -133,8 +149,8 @@ Kontaktadresse sein (`mailto:…`).
 
 ## Backup
 
-Die App sichert sich jede Nacht selbst (Standard 03:00 Uhr, `BACKUP_TIME`) nach
-`/mnt/abnehm-app/backup`. Jede Sicherung ist eine Datei
+Die App sichert sich jede Nacht selbst (Standard 03:00 Uhr, `BACKUP_TIME`) in den
+Ordner `./backup`. Jede Sicherung ist eine Datei
 `abnehm-backup-JJJJ-MM-TT_HHMM.tar.gz` mit:
 
 - `abnehm.db` – komplette Datenbank (alle Konten inkl. Logins, für eine Wiederherstellung)
@@ -145,20 +161,23 @@ Backups älter als `BACKUP_KEEP_DAYS` (Standard 30) werden gelöscht. `letztes-b
 erfolgreiche Sicherung.
 
 **Schutz vor falschem Ziel:** Gesichert wird nur, wenn im Backup-Ordner die Datei `.abnehm-backup-ziel`
-liegt. Ist das Netzlaufwerk nicht gemountet, fehlt sie – dann schreibt die App nichts und meldet einen
-Fehler im Log (`docker logs abnehm-app`). Einmalig anlegen, wenn das Laufwerk gemountet ist:
+liegt. Ist ein Netzlaufwerk nicht gemountet, fehlt sie – dann schreibt die App nichts und meldet einen
+Fehler im Log (`docker logs abnehm-app`). Ohne diese Datei läuft also auch kein Backup. Einmalig anlegen,
+bei einem Netzlaufwerk erst nach dem Mounten:
 
 ```bash
-touch /mnt/abnehm-app/backup/.abnehm-backup-ziel
+touch backup/.abnehm-backup-ziel
 ```
 
 Sofort-Backup: `docker exec abnehm-app python backup.py`
+
+Für ein anderes Ziel in der `docker-compose.override.yml` einen weiteren Ordner einbinden und `BACKUP_DIR` darauf setzen.
 
 **Wiederherstellen:**
 
 ```bash
 docker compose stop
-tar -xzf /mnt/abnehm-app/backup/abnehm-backup-<datum>.tar.gz -C /tmp abnehm.db
+tar -xzf backup/abnehm-backup-<datum>.tar.gz -C /tmp abnehm.db
 rm -f data/abnehm.db-wal data/abnehm.db-shm && cp /tmp/abnehm.db data/abnehm.db
 docker compose start
 ```
@@ -176,6 +195,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.8.3** – Veröffentlichung auf GitHub: neutrale `docker-compose.yml`, Link zum Quellcode in den Einstellungen
 - **2.8.2** – Profilbild ändern und löschen im eigenen Untermenü, oben im Profil nur noch Bild und Name
 - **2.8.1** – Profilbild: Selfie direkt mit der Frontkamera oder Bild aus der Galerie
 - **2.8.0** – Profilbild (nur für den Nutzer selbst sichtbar), Kopfbereich im Profil
