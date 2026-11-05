@@ -257,6 +257,7 @@ async function loadDay() {
   state.data = await api("/day/" + state.day);
   renderDay();
   loadWeightDiff();
+  checkTrophies();
 }
 
 function renderDay() {
@@ -367,7 +368,7 @@ function showTab(name) {
   $$("#sheet .tab").forEach((t) => t.classList.add("hidden"));
   $("#tab-" + name).classList.remove("hidden");
   $$("#sheet-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-  $("#sheet-tabs").classList.toggle("hidden", name === "amount" || name === "template");
+  $("#sheet-tabs").classList.toggle("hidden", name === "amount" || name === "template" || name === "import");
   if (name === "recent") loadRecent();
   if (name === "templates") loadTemplates();
   if (name === "search") setTimeout(() => $("#search-q").focus(), 50);
@@ -802,6 +803,7 @@ function initSheet() {
       pickFood(food);
     } catch (err) { $("#m-err").textContent = err.message; }
   };
+  initImport();
   $("#a-delete-custom").onclick = async () => {
     if (!confirm(`„${state.pick.name}“ für alle Nutzer aus der Bissfest-Datenbank löschen? Bereits eingetragene Mahlzeiten bleiben erhalten.`)) return;
     try {
@@ -1425,6 +1427,191 @@ function initOnboarding() {
   };
 }
 
+/* ------------------------------------------------------------ Trophäen */
+
+function showTrophyPop(fresh) {
+  const single = fresh.length === 1;
+  $("#trophy-pop-icon").textContent = single ? fresh[0].icon : "🏆";
+  $("#trophy-pop-title").textContent = single ? `Neue Trophäe: ${fresh[0].name}` : `${fresh.length} neue Trophäen!`;
+  $("#trophy-pop-text").textContent = single ? fresh[0].description : "Tippe hier, um sie dir anzusehen.";
+  const pop = $("#trophy-pop");
+  pop.classList.remove("hidden");
+  clearTimeout(showTrophyPop.timer);
+  showTrophyPop.timer = setTimeout(() => pop.classList.add("hidden"), 6000);
+}
+
+function wrapText(ctx, text, maxWidth) {
+  const lines = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(next).width > maxWidth) { lines.push(line); line = word; } else line = next;
+  }
+  return line ? [...lines, line] : lines;
+}
+
+// Quadratisches Bild für Messenger und Status-Meldungen
+function trophyImage(t) {
+  const size = 1080, canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d"), font = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+  const gradient = ctx.createLinearGradient(0, 0, size, size);
+  gradient.addColorStop(0, "#2e8b5f");
+  gradient.addColorStop(1, "#14492f");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `600 44px ${font}`;
+  ctx.fillText("Trophäe verdient", size / 2, 150);
+  ctx.font = `300px ${font}`;
+  ctx.fillText(t.icon, size / 2, 500);
+  ctx.font = `700 76px ${font}`;
+  let y = 660;
+  for (const line of wrapText(ctx, t.name, size - 160)) { ctx.fillText(line, size / 2, y); y += 90; }
+  ctx.font = `400 42px ${font}`;
+  y += 10;
+  for (const line of wrapText(ctx, t.description, size - 200).slice(0, 3)) { ctx.fillText(line, size / 2, y); y += 56; }
+  ctx.font = `600 38px ${font}`;
+  ctx.fillText("Bissfest · Mit Biss zum Wunschgewicht", size / 2, size - 70);
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+}
+
+async function shareTrophy(t) {
+  const text = `🏆 Ich habe in Bissfest die Trophäe „${t.name}“ verdient! ${t.description}`;
+  if (!navigator.share) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Text kopiert");
+    } catch { toast("Teilen wird hier nicht unterstützt"); }
+    return;
+  }
+  const blob = await trophyImage(t);
+  const file = blob && new File([blob], "bissfest-trophaee.jpg", { type: "image/jpeg" });
+  const data = { title: "Bissfest", text };
+  try {
+    await navigator.share(file && navigator.canShare?.({ files: [file] }) ? { ...data, files: [file] } : data);
+  } catch (err) {
+    if (err.name === "AbortError") return; // im Teilen-Menü abgebrochen
+    // Manche Browser lehnen Bilder ab, dann wenigstens den Text teilen
+    await navigator.share(data).catch(() => toast("Teilen hat nicht geklappt"));
+  }
+}
+
+function renderTrophies(r) {
+  renderTrophies.items = r.trophies;
+  $("#trophies-summary").textContent = `${r.earned} von ${r.total} verdient`;
+  $("#trophies-count").textContent = `${r.earned} von ${r.total} Trophäen`;
+  $("#trophies-bar").style.width = `${r.total ? (r.earned / r.total) * 100 : 0}%`;
+  const card = (t) => {
+    const progress = !t.earned && t.target > 1 && t.value > 0
+      ? `<div class="trophy-bar"><span style="width:${(t.value / t.target) * 100}%"></span></div>` : "";
+    const when = t.earned ? `<span class="muted tiny">${new Date(t.earned * 1000).toLocaleDateString("de-DE")}</span>
+      <button type="button" class="btn small trophy-share" data-share="${esc(t.key)}">📤 Teilen</button>` : "";
+    return `<div class="trophy ${t.earned ? "earned" : ""}"><span class="trophy-icon">${esc(t.icon)}</span>
+      <strong>${esc(t.name)}</strong><span class="muted tiny">${esc(t.description)}</span>${progress}${when}</div>`;
+  };
+  $("#trophies-list").innerHTML = r.categories.map((c) => {
+    const items = r.trophies.filter((t) => t.category === c);
+    if (!items.length) return "";
+    const done = items.filter((t) => t.earned).length;
+    // Verdiente zuerst, innerhalb der Gruppe bleibt die Reihenfolge des Katalogs
+    const sorted = [...items.filter((t) => t.earned), ...items.filter((t) => !t.earned)];
+    return `<h2 class="trophy-category">${esc(c)} <span class="muted tiny">${done}/${items.length}</span></h2>
+      <div class="trophy-grid">${sorted.map(card).join("")}</div>`;
+  }).join("");
+}
+
+async function refreshTrophies() {
+  const r = await api("/trophies").catch(() => null);
+  if (!r) return;
+  renderTrophies(r);
+  if (r.new.length) showTrophyPop(r.new);
+}
+
+// Nach Änderungen kurz warten, damit mehrere Einträge hintereinander nur eine Prüfung auslösen
+function checkTrophies() {
+  clearTimeout(checkTrophies.timer);
+  checkTrophies.timer = setTimeout(refreshTrophies, 1200);
+}
+
+function initTrophies() {
+  $("#open-trophies").onclick = () => showView("trophies");
+  $("#trophies-back").onclick = () => showView("settings");
+  $("#trophies-list").onclick = (e) => {
+    const key = e.target.closest("[data-share]")?.dataset.share;
+    const trophy = key && renderTrophies.items.find((t) => t.key === key);
+    if (trophy) shareTrophy(trophy);
+  };
+  $("#trophy-pop").onclick = () => { $("#trophy-pop").classList.add("hidden"); closeSheet(); showView("trophies"); };
+}
+
+/* ------------------------------------------------------------ Tabellen-Import */
+
+function readAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1] || "");
+    reader.onerror = () => reject(new Error("Die Datei konnte nicht gelesen werden"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderImportPreview(r) {
+  const line = (cls, row, name, text) => `<li class="${cls}"><div><div class="n">Zeile ${row}${name ? ": " + esc(name) : ""}</div><div class="b">${esc(text)}</div></div></li>`;
+  const parts = [`${r.ready.length} bereit`];
+  if (r.portions.length) parts.push(`${r.portions.length} ${r.portions.length === 1 ? "Portion" : "Portionen"} neu`);
+  if (r.errors.length) parts.push(`${r.errors.length} mit Fehler`);
+  if (r.skipped.length) parts.push(`${r.skipped.length} schon vorhanden`);
+  $("#import-summary").textContent = parts.join(" · ");
+  $("#import-list").innerHTML = [
+    ...r.errors.map((e) => line("import-error", e.row, e.name, e.message)),
+    ...r.ready.flatMap((f) => f.warnings.map((w) => line("import-warning", f.row, f.name, w))),
+    ...r.portions.map((f) => line("", f.row, f.name, `Schon vorhanden, Portion wird ergänzt: 1 ${f.portion_name} = ${f.portion_grams} g`)),
+    ...r.skipped.map((s) => line("", s.row, s.name, "Schon in der Bissfest-Datenbank, wird übersprungen")),
+    ...r.ready.map((f) => line("", f.row, f.name, `${Math.round(f.kcal_100g)} kcal pro 100 g`
+      + (f.portion_name ? ` · 1 ${f.portion_name} = ${f.portion_grams} g` : ""))),
+  ].join("");
+  const btn = $("#import-commit");
+  btn.textContent = r.ready.length ? `${r.ready.length} Lebensmittel importieren` : "Portionen ergänzen";
+  btn.classList.toggle("hidden", !r.ready.length && !r.portions.length);
+  $("#import-preview").classList.remove("hidden");
+}
+
+function initImport() {
+  let data = null;
+  const reset = () => {
+    data = null;
+    $("#import-err").textContent = "";
+    $("#import-preview").classList.add("hidden");
+  };
+  $("#open-import").onclick = () => { reset(); showTab("import"); };
+  $("#import-back").onclick = () => showTab("manual");
+  $("#import-file").onchange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    reset();
+    try {
+      const encoded = await readAsBase64(file);
+      renderImportPreview(await api("/foods/import", { method: "POST", body: { data: encoded } }));
+      data = encoded;
+    } catch (err) { $("#import-err").textContent = err.message; }
+  };
+  $("#import-commit").onclick = async () => {
+    if (!data) return;
+    const btn = $("#import-commit");
+    btn.disabled = true;
+    try {
+      const r = await api("/foods/import", { method: "POST", body: { data, commit: true } });
+      reset();
+      toast(r.imported ? `${r.imported} Lebensmittel importiert` : `${r.portions_added} Portionen ergänzt`);
+      showTab("search");
+    } catch (err) { $("#import-err").textContent = err.message; }
+    btn.disabled = false;
+  };
+}
+
 /* ------------------------------------------------------------ Profilbild */
 
 function renderAvatars() {
@@ -1595,7 +1782,7 @@ function initFeedback() {
 
 /* ------------------------------------------------------------ Navigation */
 
-const SUBVIEW_TAB = { body: "settings", profile: "settings", goals: "settings", reminders: "settings", extras: "settings", avatar: "settings" };
+const SUBVIEW_TAB = { body: "settings", profile: "settings", goals: "settings", reminders: "settings", extras: "settings", avatar: "settings", trophies: "settings" };
 
 function showView(view) {
   const tab = SUBVIEW_TAB[view] || view;
@@ -1605,6 +1792,7 @@ function showView(view) {
   $(".topbar").classList.toggle("hidden", view !== "today");
   if (view === "history") loadHistory();
   if (view === "extras") loadTokens();
+  if (view === "trophies") refreshTrophies();
   window.scrollTo(0, 0);
 }
 
@@ -1632,6 +1820,7 @@ function initNav() {
   initFeedback();
   initOnboarding();
   initAvatar();
+  initTrophies();
   initHomeAssistant();
   initNav();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

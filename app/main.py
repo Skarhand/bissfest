@@ -23,8 +23,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import backup
+import food_import
 import mailer
 import push
+import trophies
 
 DB_PATH = os.environ.get("DB_PATH", "/data/abnehm.db")
 ALLOW_REGISTRATION = os.environ.get("ALLOW_REGISTRATION", "true").lower() == "true"
@@ -59,7 +61,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.8.3"
+APP_VERSION = "2.10.1"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -208,6 +210,12 @@ CREATE TABLE IF NOT EXISTS api_tokens (
     prefix TEXT NOT NULL,
     created INTEGER NOT NULL,
     last_used INTEGER
+);
+CREATE TABLE IF NOT EXISTS user_trophies (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    earned INTEGER NOT NULL,
+    PRIMARY KEY (user_id, key)
 );
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     endpoint TEXT PRIMARY KEY,
@@ -1067,6 +1075,12 @@ def set_weight(day: str, wi: WeightIn, u=Depends(current_user)):
     return {"ok": True}
 
 
+@app.get("/api/trophies")
+def get_trophies(u=Depends(current_user)):
+    with db() as conn:
+        return trophies.evaluate(conn, u)
+
+
 @app.get("/api/history")
 def history(days: int = 30, u=Depends(current_user)):
     days = max(7, min(days, 730))
@@ -1276,6 +1290,80 @@ def create_custom_food(f: CustomFoodIn, u=Depends(current_user)):
     return custom_food_dict(row, u["id"])
 
 
+TEMPLATE_FILENAME = "bissfest-naehrwertvorlage.xlsx"
+XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@app.get("/api/foods/template")
+def food_template(u=Depends(current_user)):
+    return Response(food_import.build_template(), media_type=XLSX_TYPE,
+                    headers={"Content-Disposition": f'attachment; filename="{TEMPLATE_FILENAME}"'})
+
+
+class FoodImportIn(BaseModel):
+    data: str = Field(max_length=3_000_000)  # .xlsx als Base64
+    commit: bool = False  # false = nur prüfen und Vorschau liefern
+
+
+def food_identity(name: str, manufacturer: str, brand: str) -> tuple:
+    return (name.strip().lower(), manufacturer.strip().lower(), brand.strip().lower())
+
+
+@app.post("/api/foods/import")
+def import_foods(i: FoodImportIn, u=Depends(current_user)):
+    """Ausgefüllte Vorlage prüfen oder übernehmen. Vorhandene Lebensmittel werden nie überschrieben,
+    ihnen fehlende Portionen aber ergänzt – so lässt sich ein vergessenes Gewicht nachtragen."""
+    throttle(f"foodimport:{u['id']}", limit=30, window=3600)
+    try:
+        foods, errors = food_import.parse_workbook(base64.b64decode(i.data, validate=True))
+    except food_import.ImportFileError as e:
+        raise HTTPException(422, str(e))
+    except ValueError:
+        raise HTTPException(422, "Die Datei konnte nicht gelesen werden")
+
+    ready, portions, skipped, now = [], [], [], int(time.time())
+
+    def add_portion(conn, key, f):
+        conn.execute(
+            "INSERT INTO food_portions (food_key, name, grams, created_by, created) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(food_key, name) DO NOTHING",
+            (key, f["portion_name"], f["portion_grams"], u["id"], now))
+
+    with db() as conn:
+        rows = conn.execute("SELECT id, name, manufacturer, brand, code FROM custom_foods").fetchall()
+        # Vorhandene Lebensmittel mit ihrem Portionsschlüssel; None = kommt aus dieser Datei
+        known = {food_identity(r["name"], r["manufacturer"], r["brand"]):
+                 food_key("Bissfest-DB", r["code"] or f"custom:{r['id']}", r["name"], r["brand"]) for r in rows}
+        codes = {r["code"]: r["code"] for r in rows if r["code"]}
+        for f in foods:
+            identity = food_identity(f["name"], f["manufacturer"], f["brand"])
+            if identity in known or (f["code"] and f["code"] in codes):
+                key = known.get(identity) or codes.get(f["code"])
+                if key and f["portion_name"] and not conn.execute(
+                        "SELECT 1 FROM food_portions WHERE food_key=? AND name=?", (key, f["portion_name"])).fetchone():
+                    portions.append(f)
+                    if i.commit:
+                        add_portion(conn, key, f)
+                else:
+                    skipped.append({"row": f["row"], "name": f["name"]})
+                continue
+            known[identity] = None
+            if f["code"]:
+                codes[f["code"]] = None
+            ready.append(f)
+            if not i.commit:
+                continue
+            cur = conn.execute(
+                """INSERT INTO custom_foods (created_by, name, manufacturer, brand, code, kcal_100g, protein_100g,
+                   carbs_100g, sugar_100g, fat_100g, created) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (u["id"], f["name"], f["manufacturer"], f["brand"], f["code"], f["kcal_100g"], f["protein_100g"],
+                 f["carbs_100g"], f["sugar_100g"], f["fat_100g"], now))
+            if f["portion_name"]:
+                add_portion(conn, food_key("Bissfest-DB", f["code"] or f"custom:{cur.lastrowid}", f["name"], f["brand"]), f)
+    return {"ready": ready, "portions": portions, "errors": errors, "skipped": skipped,
+            "imported": len(ready) if i.commit else 0, "portions_added": len(portions) if i.commit else 0}
+
+
 @app.delete("/api/foods/custom/{food_id}")
 def delete_custom_food(food_id: int, u=Depends(current_user)):
     """Nur wer ein Lebensmittel angelegt hat, darf es aus der gemeinsamen Datenbank löschen."""
@@ -1300,8 +1388,6 @@ PORTION_SUGGESTIONS = [
     (r"salami|wurst|aufschnitt", "Scheibe", 10), (r"schinken", "Scheibe", 15), (r"käse", "Scheibe", 25),
     (r"joghurt|yoghurt|skyr|quark", "Becher", 150), (r"milch", "Glas", 200),
     (r"kaffee|\btee\b", "Tasse", 150), (r"butter|margarine", "Portion", 10),
-    (r"nutella|nussnougat|marmelade|konfitüre|honig|aufstrich", "TL", 8),
-    (r"haferflocken|müsli|granola|cornflakes", "EL", 10), (r"\böl\b|olivenöl|rapsöl", "EL", 10),
 ]
 
 
@@ -1320,6 +1406,9 @@ def get_portions(name: str, brand: str = "", source: str = "", code: str = "", u
                  for r in conn.execute("SELECT * FROM food_portions WHERE food_key=? ORDER BY grams", (key,))]
     lname = name.lower()
     suggested = [{"name": n, "grams": g} for pat, n, g in PORTION_SUGGESTIONS if re.search(pat, lname)][:1]
+    spoons = food_import.spoon_grams(name)
+    if spoons:
+        suggested += [{"name": "TL", "grams": spoons[0]}, {"name": "EL", "grams": spoons[1]}]
     return {"saved": saved, "suggested": suggested}
 
 

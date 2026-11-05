@@ -363,3 +363,38 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .avatar-actions label.btn { color: var(--text); cursor: pointer; text-align: center; }
 #logout { width: 100%; }
 #admin-link { color: var(--text); }
+
+/* Tabellen-Import */
+#tab-import a.btn, #tab-import label.btn { color: var(--text); text-align: center; text-decoration: none; cursor: pointer; }
+#tab-import .back-link { justify-self: start; }
+#tab-import h2 { margin: 0; }
+#import-preview { display: grid; gap: 8px; }
+#import-preview.hidden { display: none; }
+#import-summary { margin: 0; font-weight: 600; }
+#import-list { max-height: 40vh; overflow-y: auto; }
+#import-list li.import-error .b { color: var(--danger); }
+#import-list li.import-warning .b { color: var(--warn, #b8742a); }
+
+/* Trophäen */
+#view-trophies { padding-top: calc(env(safe-area-inset-top) + 12px); }
+.trophy-head { display: grid; gap: 8px; }
+.trophy-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; width: 100%; }
+.trophy-bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.trophy-category { margin: 18px 0 8px; display: flex; justify-content: space-between; align-items: baseline; }
+.trophy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.trophy {
+  display: grid; gap: 4px; align-content: start; justify-items: center; text-align: center; padding: 12px 8px;
+  border-radius: 14px; background: var(--card); overflow-wrap: anywhere;
+}
+.trophy-icon { font-size: 2rem; line-height: 1.2; filter: grayscale(1); opacity: .4; }
+.trophy.earned .trophy-icon { filter: none; opacity: 1; }
+.trophy:not(.earned) strong { color: var(--muted); }
+.trophy-pop {
+  position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: 50%; transform: translateX(-50%); z-index: 40;
+  display: flex; align-items: center; gap: 12px; width: min(420px, calc(100vw - 32px)); padding: 12px 14px; text-align: left;
+  border: 2px solid var(--accent); border-radius: 16px; background: var(--card); color: var(--text); font: inherit;
+  cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+}
+.trophy-pop-icon { font-size: 2rem; }
+.trophy-pop strong, .trophy-pop .tiny { display: block; }
+.trophy-share { margin-top: 4px; }

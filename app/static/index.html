@@ -179,6 +179,11 @@
       <span class="mi-text"><strong>Profil</strong><span class="muted tiny" id="profile-summary"></span></span>
       <span class="chev">›</span>
     </button>
+    <button type="button" class="card menu-item" id="open-trophies">
+      <span class="mi-icon">🏆</span>
+      <span class="mi-text"><strong>Trophäen</strong><span class="muted tiny" id="trophies-summary"></span></span>
+      <span class="chev">›</span>
+    </button>
     <button type="button" class="card menu-item" id="open-body">
       <span class="mi-icon">🧮</span>
       <span class="mi-text"><strong>Körperdaten &amp; Kaloriendefizit</strong><span class="muted tiny" id="body-summary"></span></span>
@@ -264,6 +269,15 @@
     </form>
     <a class="btn hidden" id="admin-link" href="/admin">🛠️ Admin-Dashboard</a>
     <button class="btn danger" id="logout">Abmelden</button>
+  </main>
+
+  <main id="view-trophies" class="view hidden">
+    <button type="button" class="back-link" id="trophies-back">‹ Einstellungen</button>
+    <div class="card trophy-head">
+      <strong id="trophies-count"></strong>
+      <div class="trophy-bar"><span id="trophies-bar"></span></div>
+    </div>
+    <div id="trophies-list"></div>
   </main>
 
   <main id="view-avatar" class="view hidden">
@@ -464,6 +478,7 @@
     </div>
     <form class="tab form hidden" id="tab-manual">
       <p class="muted tiny">Neue Lebensmittel landen in der gemeinsamen Bissfest-Datenbank – alle Nutzer finden sie danach in der Suche.</p>
+      <button type="button" class="btn" id="open-import">📊 Mehrere per Tabelle importieren</button>
       <label>Bezeichnung *<input id="m-name" placeholder="z. B. Kernige Haferflocken" required maxlength="120"></label>
       <div class="row2">
         <label>Hersteller<input id="m-manufacturer" placeholder="z. B. Kölln" maxlength="120"></label>
@@ -492,6 +507,24 @@
       <button class="btn primary">Speichern &amp; eintragen</button>
       <p class="err" id="m-err"></p>
     </form>
+
+    <!-- Tabellen-Import -->
+    <div class="tab form hidden" id="tab-import">
+      <button type="button" class="back-link" id="import-back">‹ Zurück</button>
+      <h2>Mehrere Lebensmittel importieren</h2>
+      <p class="muted tiny">Vorlage herunterladen, am besten am Computer ausfüllen und als .xlsx wieder hochladen.
+        Die Lebensmittel landen in der gemeinsamen Bissfest-Datenbank.</p>
+      <a class="btn" href="/api/foods/template" download="bissfest-naehrwertvorlage.xlsx">⬇️ Vorlage herunterladen</a>
+      <label class="btn" for="import-file">⬆️ Ausgefüllte Tabelle wählen</label>
+      <input type="file" id="import-file" class="visually-hidden"
+             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+      <p class="err" id="import-err"></p>
+      <div class="hidden" id="import-preview">
+        <p id="import-summary"></p>
+        <ul class="results small" id="import-list"></ul>
+        <button type="button" class="btn primary" id="import-commit"></button>
+      </div>
+    </div>
 
     <!-- Menge -->
     <form class="tab form hidden" id="tab-amount">
@@ -616,6 +649,10 @@
 </div>
 
 <div id="toast" class="toast hidden"></div>
+<button type="button" id="trophy-pop" class="trophy-pop hidden">
+  <span class="trophy-pop-icon" id="trophy-pop-icon"></span>
+  <span><strong id="trophy-pop-title"></strong><span class="tiny" id="trophy-pop-text"></span></span>
+</button>
 
 <script src="/static/app.js?v=__V__"></script>
 </body>

@@ -82,6 +82,23 @@ bissfest.example.de {
 | `BACKUP_KEEP_DAYS`                        | `30`                            | Aufbewahrungsdauer der Backups                                                                                                                           |
 | `OFF_COUNTRY`                             | `de`                            | Länder-Subdomain für die Open-Food-Facts-Fallback-Suche                                                                                                  |
 
+## Lebensmittel per Tabelle importieren
+
+Unter **Lebensmittel hinzufügen → Neu → Mehrere per Tabelle importieren** gibt es eine Excel-Vorlage (.xlsx) mit Name,
+Hersteller, Marke, Barcode, Nährwerten pro 100 g und pro Portion sowie der Portion (Größe, Einheit, Gewicht).
+Vor der Übernahme zeigt Bissfest eine Vorschau mit Fehlern. Vorhandene Lebensmittel werden nie überschrieben, fehlende Portionen aber ergänzt.
+Bei TL und EL ohne Gewicht nutzt Bissfest für bekannte Lebensmittel Richtwerte für gestrichene Löffel.
+
+## Trophäen
+
+Unter **Einstellungen → Trophäen** sammelt jeder Nutzer Auszeichnungen, die Liste steht in [docs/trophaeen.txt](docs/trophaeen.txt).
+Einmal verdient, bleiben sie erhalten. Bewusst gibt es keine Trophäen für besonders wenig Essen oder schnelles Abnehmen.
+Neue Trophäen im Katalog in `app/trophies.py` eintragen und die Liste neu erzeugen:
+
+```bash
+cd app && python -c "import trophies; print(trophies.catalog_text())" > ../docs/trophaeen.txt
+```
+
 ## Admin-Dashboard
 
 Unter `/admin` (z. B. https://bissfest.example.de/admin) für alle Benutzer aus `ADMIN_USERS`
@@ -195,6 +212,12 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.10.1** – Trophäen als Bild und Text über das Teilen-Menü des Geräts teilen
+- **2.10.0** – Trophäen für Dranbleiben, Abnehmen, Wasser, Kalorienziel und mehr, inklusive geheimer Trophäen
+- **2.9.3** – Richtwerte für TL und EL bei Zucker, Öl, Mehl und Co., auch im Tabellen-Import
+- **2.9.2** – Erneuter Tabellen-Import ergänzt fehlende Portionen bei vorhandenen Lebensmitteln
+- **2.9.1** – Tabellen-Import liest auch .xlsx-Dateien aus anderen Tabellen-Apps
+- **2.9.0** – Nährwertvorlage: mehrere Lebensmittel per Excel-Tabelle in die Bissfest-Datenbank importieren
 - **2.8.3** – Veröffentlichung auf GitHub: neutrale `docker-compose.yml`, Link zum Quellcode in den Einstellungen
 - **2.8.2** – Profilbild ändern und löschen im eigenen Untermenü, oben im Profil nur noch Bild und Name
 - **2.8.1** – Profilbild: Selfie direkt mit der Frontkamera oder Bild aus der Galerie
