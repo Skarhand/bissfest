@@ -9,6 +9,8 @@ const fmtDate = (ts) => (ts ? new Date(ts * 1000).toLocaleDateString("de-DE", { 
 const fmtDateTime = (ts) => (ts ? new Date(ts * 1000).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–");
 const fmtBytes = (b) => (b > 1e9 ? `${fmt(b / 1e9, 1)} GB` : b > 1e6 ? `${fmt(b / 1e6, 1)} MB` : `${fmt(b / 1e3)} KB`);
 const state = { feedback: [], feedbackFilter: "offen", foods: [] };
+const KIND_LABELS = { feature: "💡 Idee", bug: "🐞 Bug", food: "🥫 Lebensmittel" };
+const KIND_SUBJECTS = { feature: "Feature Request", bug: "Bug Report", food: "Lebensmittel-Meldung" };
 
 function ago(ts) {
   if (!ts) return "nie";
@@ -158,7 +160,7 @@ function renderFeedback() {
   $("#feedback-list").innerHTML = items.length ? items.map((x) => `
     <article class="fb ${x.status === "erledigt" ? "done" : ""}" data-id="${x.id}">
       <header>
-        <span class="pill ${x.kind === "bug" ? "warn" : ""}">${x.kind === "bug" ? "🐞 Bug" : "💡 Idee"} #${x.id}</span>
+        <span class="pill ${x.kind === "bug" ? "warn" : ""}">${KIND_LABELS[x.kind] || KIND_LABELS.feature} #${x.id}</span>
         <strong>${esc(x.username || "gelöschtes Konto")}</strong>
         <span class="muted tiny">${fmtDateTime(x.created)}${x.mailed ? "" : " · ⚠️ Mail nicht gesendet"}</span>
         <span class="pill ${x.status === "erledigt" ? "ok" : ""}">${x.status}</span>
@@ -167,10 +169,17 @@ function renderFeedback() {
       ${x.has_screenshot ? `<a href="/api/admin/feedback/${x.id}/screenshot" target="_blank" rel="noopener"><img class="fb-shot" loading="lazy" src="/api/admin/feedback/${x.id}/screenshot" alt="Screenshot zu #${x.id}"></a>` : ""}
       ${x.meta ? `<details><summary class="muted tiny">Technische Angaben</summary><pre class="bug-meta">${esc(Object.entries(x.meta).map(([k, v]) => `${k}: ${v}`).join("\n"))}</pre></details>` : ""}
       <div class="fb-actions">
+        ${x.meta?.custom_id ? `<button class="btn small" data-food="${esc(x.meta.custom_id)}">✏️ Lebensmittel bearbeiten</button>` : ""}
         <button class="btn small ${x.status === "offen" ? "primary" : ""}" data-status="${x.status === "offen" ? "erledigt" : "offen"}">${x.status === "offen" ? "✓ Erledigt" : "Wieder öffnen"}</button>
-        ${x.email ? `<a class="btn small" href="mailto:${esc(x.email)}?subject=${encodeURIComponent(`Re: Bissfest ${x.kind === "bug" ? "Bug Report" : "Feature Request"} #${x.id}`)}">Antworten</a>` : ""}
+        ${x.email ? `<a class="btn small" href="mailto:${esc(x.email)}?subject=${encodeURIComponent(`Re: Bissfest ${KIND_SUBJECTS[x.kind] || KIND_SUBJECTS.feature} #${x.id}`)}">Antworten</a>` : ""}
       </div>
     </article>`).join("") : `<p class="empty">Nichts in dieser Ansicht 🎉</p>`;
+  $$("#feedback-list [data-food]").forEach((b) => (b.onclick = async () => {
+    try {
+      await loadFoods();
+      openFoodDialog(+b.dataset.food);
+    } catch (err) { toast(err.message); }
+  }));
   $$("#feedback-list [data-status]").forEach((b) => (b.onclick = async () => {
     const id = +b.closest(".fb").dataset.id;
     try {
@@ -184,8 +193,89 @@ function renderFeedback() {
 /* ------------------------------------------------------------ Lebensmittel */
 
 async function loadFoods() {
-  state.foods = await api("/admin/foods");
+  [state.foods, state.portionFoods] = await Promise.all([api("/admin/foods"), api("/admin/portions")]);
   renderFoods();
+  renderPortionFoods();
+}
+
+// Ein Esslöffel fasst etwa dreimal so viel wie ein Teelöffel, gleiche Werte sind fast immer ein Tippfehler
+function spoonsLookWrong(f) {
+  const grams = (name) => f.portions.find((p) => p.name.toLowerCase() === name)?.grams;
+  const tl = grams("tl"), el = grams("el");
+  return tl != null && el != null && el <= tl;
+}
+
+function renderPortionFoods() {
+  const q = $("#portions-search").value.trim().toLowerCase();
+  const items = state.portionFoods.filter((f) => !q || [f.name, f.brand, f.source, ...f.portions.map((p) => p.name)].join(" ").toLowerCase().includes(q));
+  $("#portions-count").textContent = `${items.length} von ${state.portionFoods.length}`;
+  $("#portions-list").innerHTML = items.map((f) => `<li>
+    <div><strong>${esc(f.name)}</strong>
+      <div class="muted tiny">${esc([f.brand, f.source].filter(Boolean).join(" · ") || "–")}</div>
+      <div>${f.portions.map((p) => `${esc(p.name)} ${fmt(p.grams, p.grams % 1 ? 1 : 0)} g`).join(" · ")}</div>
+      ${spoonsLookWrong(f) ? `<div class="err tiny">⚠️ EL ist nicht schwerer als TL</div>` : ""}</div>
+    <button class="btn small" data-portions="${esc(f.key)}">Bearbeiten</button></li>`).join("")
+    || `<li class="muted tiny">Nichts gefunden</li>`;
+  $$("#portions-list [data-portions]").forEach((b) => (b.onclick = () => openPortionDialog(b.dataset.portions)));
+}
+
+function renderPortionDialog() {
+  const f = state.portionFood;
+  $("#pd-title").textContent = f.name;
+  $("#pd-meta").textContent = [f.brand, f.source].filter(Boolean).join(" · ");
+  $("#pd-list").innerHTML = f.portions.map((p) => `<li data-id="${p.id}">
+    <input class="pd-name" maxlength="30" value="${esc(p.name)}" aria-label="Portion">
+    <input class="pd-grams" type="number" step="any" min="0.1" max="3000" value="${p.grams}" aria-label="Gramm">
+    <button type="button" class="btn small" data-save>Speichern</button>
+    <button type="button" class="btn small danger" data-remove>Löschen</button></li>`).join("")
+    || `<li class="muted tiny">Keine Portion mehr vorhanden</li>`;
+}
+
+function openPortionDialog(key) {
+  state.portionFood = state.portionFoods.find((f) => f.key === key);
+  $("#pd-err").textContent = "";
+  $("#pd-new-name").value = $("#pd-new-grams").value = "";
+  renderPortionDialog();
+  $("#portion-dialog").showModal();
+}
+
+// Nach jeder Änderung neu laden, damit Liste und Dialog denselben Stand zeigen
+async function refreshPortionFoods() {
+  const key = state.portionFood.key;
+  state.portionFoods = await api("/admin/portions");
+  state.portionFood = state.portionFoods.find((f) => f.key === key) || { ...state.portionFood, portions: [] };
+  renderPortionFoods();
+  renderPortionDialog();
+}
+
+function initPortionDialog() {
+  const guarded = (fn) => async (e) => {
+    $("#pd-err").textContent = "";
+    try { await fn(e); } catch (err) { $("#pd-err").textContent = err.message; }
+  };
+  $("#portions-search").oninput = renderPortionFoods;
+  $("#pd-close").onclick = () => $("#portion-dialog").close();
+  $("#pd-list").onclick = guarded(async (e) => {
+    const row = e.target.closest("li[data-id]");
+    if (!row) return;
+    if (e.target.closest("[data-save]")) {
+      const body = { name: row.querySelector(".pd-name").value.trim(), grams: parseFloat(row.querySelector(".pd-grams").value) };
+      await api("/portions/" + row.dataset.id, { method: "PUT", body });
+      toast("Portion gespeichert");
+    } else if (e.target.closest("[data-remove]")) {
+      await api("/portions/" + row.dataset.id, { method: "DELETE" });
+      toast("Portion gelöscht");
+    } else return;
+    await refreshPortionFoods();
+  });
+  $("#portion-form").onsubmit = guarded(async (e) => {
+    e.preventDefault();
+    const name = $("#pd-new-name").value.trim(), grams = parseFloat($("#pd-new-grams").value);
+    if (!name || !(grams > 0)) return toast("Bitte Portion und Gramm eingeben");
+    await api("/admin/portions", { method: "POST", body: { food_key: state.portionFood.key, name, grams } });
+    $("#pd-new-name").value = $("#pd-new-grams").value = "";
+    await refreshPortionFoods();
+  });
 }
 
 function renderFoods() {
@@ -201,7 +291,9 @@ function renderFoods() {
       <td class="num">${fmt(f.kcal_100g)}</td>
       <td class="num">${fmt(f.uses)}×</td>
       <td>${esc(f.created_by || "–")}<div class="muted tiny">${fmtDate(f.created)}</div></td>
-      <td class="actions"><button class="btn small danger" data-del>Löschen</button></td></tr>`).join("") + "</tbody>";
+      <td class="actions"><button class="btn small" data-edit>Bearbeiten</button>
+        <button class="btn small danger" data-del>Löschen</button></td></tr>`).join("") + "</tbody>";
+  $$("#foods-table [data-edit]").forEach((b) => (b.onclick = () => openFoodDialog(+b.closest("tr").dataset.id)));
   $$("#foods-table [data-del]").forEach((b) => (b.onclick = async () => {
     const row = b.closest("tr");
     if (!confirm(`„${row.dataset.name}“ aus der Bissfest-Datenbank löschen?\nBereits eingetragene Mahlzeiten bleiben erhalten.`)) return;
@@ -211,6 +303,72 @@ function renderFoods() {
       loadFoods();
     } catch (err) { toast(err.message); }
   }));
+}
+
+function foodPortionQuery(f) {
+  return new URLSearchParams({ name: f.name, brand: f.brand || "", source: "Bissfest-DB", code: f.code || `custom:${f.id}` });
+}
+
+async function renderDialogPortions() {
+  const r = await api("/portions?" + foodPortionQuery(state.food));
+  $("#ad-portions").innerHTML = r.saved.map((p) => `<li><span>${esc(p.name)} · ${fmt(p.grams, p.grams % 1 ? 1 : 0)} g</span>
+    <button type="button" class="btn small danger" data-portion="${p.id}">Löschen</button></li>`).join("")
+    || `<li class="muted tiny">Noch keine Portion gespeichert</li>`;
+}
+
+function openFoodDialog(id) {
+  const f = state.foods.find((x) => x.id === id);
+  if (!f) return toast("Dieses Lebensmittel gibt es nicht mehr");
+  state.food = f;
+  $("#ad-err").textContent = "";
+  for (const [field, key] of [["name", "name"], ["manufacturer", "manufacturer"], ["brand", "brand"], ["code", "code"],
+    ["kcal", "kcal_100g"], ["protein", "protein_100g"], ["fat", "fat_100g"], ["carbs", "carbs_100g"], ["sugar", "sugar_100g"]]) {
+    $("#ad-" + field).value = f[key] ?? "";
+  }
+  $("#ad-p-name").value = $("#ad-p-grams").value = "";
+  renderDialogPortions().catch((err) => toast(err.message));
+  $("#food-dialog").showModal();
+}
+
+function initFoodDialog() {
+  const num = (id) => ($(id).value === "" ? null : parseFloat($(id).value));
+  $("#ad-cancel").onclick = () => $("#food-dialog").close();
+  $("#food-form").onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api("/foods/custom/" + state.food.id, {
+        method: "PUT",
+        body: {
+          name: $("#ad-name").value.trim(), manufacturer: $("#ad-manufacturer").value.trim(), brand: $("#ad-brand").value.trim(),
+          code: $("#ad-code").value.trim(), kcal_100g: num("#ad-kcal"), protein_100g: num("#ad-protein"),
+          carbs_100g: num("#ad-carbs"), sugar_100g: num("#ad-sugar"), fat_100g: num("#ad-fat"),
+        },
+      });
+      $("#food-dialog").close();
+      toast("Gespeichert");
+      loadFoods();
+    } catch (err) { $("#ad-err").textContent = err.message; }
+  };
+  $("#ad-p-save").onclick = async () => {
+    const name = $("#ad-p-name").value.trim(), grams = num("#ad-p-grams"), f = state.food;
+    if (!name || !(grams > 0)) return toast("Bitte Portion und Gramm eingeben");
+    try {
+      await api("/portions", {
+        method: "POST",
+        body: { name: f.name, brand: f.brand || "", source: "Bissfest-DB", code: f.code || `custom:${f.id}`, portion_name: name, grams },
+      });
+      $("#ad-p-name").value = $("#ad-p-grams").value = "";
+      renderDialogPortions();
+    } catch (err) { $("#ad-err").textContent = err.message; }
+  };
+  $("#ad-portions").onclick = async (e) => {
+    const id = e.target.closest("[data-portion]")?.dataset.portion;
+    if (!id) return;
+    try {
+      await api("/portions/" + id, { method: "DELETE" });
+      renderDialogPortions();
+    } catch (err) { $("#ad-err").textContent = err.message; }
+  };
 }
 
 /* ------------------------------------------------------------ System */
@@ -267,6 +425,8 @@ function showTab(tab) {
     renderFeedback();
   }));
   $("#foods-search").oninput = renderFoods;
+  initFoodDialog();
+  initPortionDialog();
   $("#max-users-form").onsubmit = async (e) => {
     e.preventDefault();
     try {

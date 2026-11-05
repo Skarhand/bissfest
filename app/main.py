@@ -61,7 +61,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.10.1"
+APP_VERSION = "2.11.3"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -1364,6 +1364,44 @@ def import_foods(i: FoodImportIn, u=Depends(current_user)):
             "imported": len(ready) if i.commit else 0, "portions_added": len(portions) if i.commit else 0}
 
 
+@app.get("/api/foods/custom/resolve")
+def resolve_custom_food(code: str, u=Depends(current_user)):
+    """Lebensmittel zu einem Eintrag finden; Einträge kennen nur den Code ("custom:12" oder Barcode)."""
+    with db() as conn:
+        if code.startswith("custom:") and code[7:].isdigit():
+            row = conn.execute("SELECT * FROM custom_foods WHERE id=?", (int(code[7:]),)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM custom_foods WHERE code=? AND code != '' ORDER BY id DESC LIMIT 1", (code,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Lebensmittel nicht gefunden")
+    return custom_food_dict(row, u["id"])
+
+
+@app.put("/api/foods/custom/{food_id}")
+def update_custom_food(food_id: int, f: CustomFoodIn, u=Depends(current_user)):
+    """Nur wer das Lebensmittel angelegt hat oder Admin ist. Eingetragene Mahlzeiten bleiben unverändert."""
+    if f.sugar_100g is not None and f.carbs_100g is not None and f.sugar_100g > f.carbs_100g:
+        raise HTTPException(400, "Zucker kann nicht mehr sein als Kohlenhydrate")
+    with db() as conn:
+        old = conn.execute("SELECT * FROM custom_foods WHERE id=?", (food_id,)).fetchone()
+        if not old:
+            raise HTTPException(404, "Lebensmittel nicht gefunden")
+        if old["created_by"] != u["id"] and not is_admin(u):
+            raise HTTPException(403, "Nur die Person, die das Lebensmittel angelegt hat, kann es bearbeiten")
+        conn.execute(
+            """UPDATE custom_foods SET name=?, manufacturer=?, brand=?, code=?, kcal_100g=?, protein_100g=?,
+               carbs_100g=?, sugar_100g=?, fat_100g=? WHERE id=?""",
+            (f.name.strip(), f.manufacturer.strip(), f.brand.strip(), f.code, f.kcal_100g, f.protein_100g,
+             f.carbs_100g, f.sugar_100g, f.fat_100g, food_id))
+        old_key, new_key = old["code"] or f"custom:{food_id}", f.code or f"custom:{food_id}"
+        if old_key != new_key:  # Portionen hängen am Code und müssen mitwandern
+            conn.execute("UPDATE OR IGNORE food_portions SET food_key=? WHERE food_key=?", (new_key, old_key))
+        row = conn.execute("SELECT * FROM custom_foods WHERE id=?", (food_id,)).fetchone()
+    if old["created_by"] != u["id"]:
+        logging.getLogger("admin").info("Lebensmittel #%s bearbeitet von %s", food_id, u["username"])
+    return custom_food_dict(row, u["id"])
+
+
 @app.delete("/api/foods/custom/{food_id}")
 def delete_custom_food(food_id: int, u=Depends(current_user)):
     """Nur wer ein Lebensmittel angelegt hat, darf es aus der gemeinsamen Datenbank löschen."""
@@ -1423,20 +1461,51 @@ class PortionIn(BaseModel):
 
 @app.post("/api/portions")
 def save_portion(p: PortionIn, u=Depends(current_user)):
-    """Portion für alle Nutzer speichern; gleicher Name überschreibt die Grammzahl."""
-    key = food_key(p.source, p.code, p.name, p.brand)
+    """Portion für alle Nutzer speichern. Eine vorhandene Portion ändern nur Ersteller und Admin."""
+    key, name = food_key(p.source, p.code, p.name, p.brand), p.portion_name.strip()
     with db() as conn:
-        conn.execute(
-            "INSERT INTO food_portions (food_key, name, grams, created_by, created) VALUES (?,?,?,?,?) "
-            "ON CONFLICT(food_key, name) DO UPDATE SET grams=excluded.grams",
-            (key, p.portion_name.strip(), p.grams, u["id"], int(time.time())))
+        old = conn.execute("SELECT * FROM food_portions WHERE food_key=? AND name=?", (key, name)).fetchone()
+        if not old:
+            conn.execute("INSERT INTO food_portions (food_key, name, grams, created_by, created) VALUES (?,?,?,?,?)",
+                         (key, name, p.grams, u["id"], int(time.time())))
+        elif old["grams"] != p.grams:
+            check_portion_owner(old, u)
+            conn.execute("UPDATE food_portions SET grams=? WHERE id=?", (p.grams, old["id"]))
     return get_portions(p.name, p.brand, p.source, p.code, u)
+
+
+def check_portion_owner(portion: sqlite3.Row, u: sqlite3.Row):
+    if portion["created_by"] != u["id"] and not is_admin(u):
+        raise HTTPException(403, f"„{portion['name']}“ gibt es schon mit {portion['grams']:g} g. "
+                                 "Ändern kann sie nur, wer sie angelegt hat, oder der Admin.")
+
+
+class PortionEdit(BaseModel):
+    name: str = Field(min_length=1, max_length=30)
+    grams: float = Field(gt=0, le=3000)
+
+
+@app.put("/api/portions/{portion_id}")
+def update_portion(portion_id: int, p: PortionEdit, u=Depends(current_user)):
+    try:
+        with db() as conn:
+            old = conn.execute("SELECT * FROM food_portions WHERE id=?", (portion_id,)).fetchone()
+            if not old:
+                raise HTTPException(404, "Portion nicht gefunden")
+            check_portion_owner(old, u)
+            conn.execute("UPDATE food_portions SET name=?, grams=? WHERE id=?", (p.name.strip(), p.grams, portion_id))
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "Dieses Lebensmittel hat schon eine Portion mit diesem Namen")
+    return {"ok": True}
 
 
 @app.delete("/api/portions/{portion_id}")
 def delete_portion(portion_id: int, u=Depends(current_user)):
     with db() as conn:
-        cur = conn.execute("DELETE FROM food_portions WHERE id=? AND created_by=?", (portion_id, u["id"]))
+        if is_admin(u):
+            cur = conn.execute("DELETE FROM food_portions WHERE id=?", (portion_id,))
+        else:
+            cur = conn.execute("DELETE FROM food_portions WHERE id=? AND created_by=?", (portion_id, u["id"]))
     if not cur.rowcount:
         raise HTTPException(403, "Nur wer die Portion angelegt hat, kann sie löschen")
     return {"ok": True}
@@ -1448,19 +1517,87 @@ ITEM_COLS = ("name, brand, grams, kcal_100g, protein_100g, carbs_100g, sugar_100
              "portion_name, portion_count")
 
 
+def template_dict(conn: sqlite3.Connection, t: sqlite3.Row) -> dict:
+    items = [entry_dict(r) for r in conn.execute(
+        "SELECT * FROM meal_template_items WHERE template_id=? ORDER BY id", (t["id"],))]
+    return {"id": t["id"], "name": t["name"], "items": items,
+            "kcal": round(sum(i["kcal"] for i in items)),
+            "grams": round(sum(i["grams"] for i in items))}
+
+
+def own_template(conn: sqlite3.Connection, tpl_id: int, u: sqlite3.Row) -> sqlite3.Row:
+    t = conn.execute("SELECT * FROM meal_templates WHERE id=? AND user_id=?", (tpl_id, u["id"])).fetchone()
+    if not t:
+        raise HTTPException(404, "Gericht nicht gefunden")
+    return t
+
+
 @app.get("/api/templates")
 def list_templates(u=Depends(current_user)):
     with db() as conn:
         tpls = conn.execute("SELECT * FROM meal_templates WHERE user_id=? ORDER BY name COLLATE NOCASE",
                             (u["id"],)).fetchall()
-        out = []
-        for t in tpls:
-            items = [entry_dict(r) for r in conn.execute(
-                "SELECT * FROM meal_template_items WHERE template_id=? ORDER BY id", (t["id"],))]
-            out.append({"id": t["id"], "name": t["name"], "items": items,
-                        "kcal": round(sum(i["kcal"] for i in items)),
-                        "grams": round(sum(i["grams"] for i in items))})
-    return out
+        return [template_dict(conn, t) for t in tpls]
+
+
+class TemplateItemEdit(BaseModel):
+    id: int
+    grams: float = Field(gt=0, le=5000)
+
+
+class TemplateEdit(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    items: list[TemplateItemEdit] = Field(max_length=200)  # nicht aufgeführte Zutaten werden entfernt
+
+
+@app.put("/api/templates/{tpl_id}")
+def update_template(tpl_id: int, t: TemplateEdit, u=Depends(current_user)):
+    """Bereits eingetragene Mahlzeiten bleiben unverändert."""
+    if not t.name.strip():
+        raise HTTPException(400, "Bitte einen Namen eingeben")
+    if not t.items:
+        raise HTTPException(400, "Ein Gericht braucht mindestens eine Zutat")
+    with db() as conn:
+        own_template(conn, tpl_id, u)
+        old = {r["id"]: r for r in conn.execute("SELECT * FROM meal_template_items WHERE template_id=?", (tpl_id,))}
+        keep = {i.id: i.grams for i in t.items if i.id in old}
+        if not keep:
+            raise HTTPException(400, "Ein Gericht braucht mindestens eine Zutat")
+        conn.execute("UPDATE meal_templates SET name=? WHERE id=?", (t.name.strip(), tpl_id))
+        for item_id, r in old.items():
+            if item_id not in keep:
+                conn.execute("DELETE FROM meal_template_items WHERE id=?", (item_id,))
+                continue
+            # Die Portion wächst mit: aus 2 Scheiben (50 g) werden bei 75 g drei Scheiben
+            count = r["portion_count"] * keep[item_id] / r["grams"] if r["portion_count"] else None
+            conn.execute("UPDATE meal_template_items SET grams=?, portion_count=? WHERE id=?", (keep[item_id], count, item_id))
+        return template_dict(conn, own_template(conn, tpl_id, u))
+
+
+class TemplateItemIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    brand: str = Field(default="", max_length=200)
+    grams: float = Field(gt=0, le=5000)
+    kcal_100g: float = Field(ge=0, le=1000)
+    protein_100g: float | None = Field(default=None, ge=0, le=100)
+    carbs_100g: float | None = Field(default=None, ge=0, le=100)
+    sugar_100g: float | None = Field(default=None, ge=0, le=100)
+    fat_100g: float | None = Field(default=None, ge=0, le=100)
+    source: str = Field(default="manuell", max_length=40)
+    code: str = Field(default="", max_length=60)
+    portion_name: str | None = Field(default=None, max_length=40)
+    portion_count: float | None = Field(default=None, gt=0, le=100)
+
+
+@app.post("/api/templates/{tpl_id}/items")
+def add_template_item(tpl_id: int, i: TemplateItemIn, u=Depends(current_user)):
+    with db() as conn:
+        t = own_template(conn, tpl_id, u)
+        conn.execute(
+            f"INSERT INTO meal_template_items (template_id, {ITEM_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (tpl_id, i.name, i.brand, i.grams, i.kcal_100g, i.protein_100g, i.carbs_100g, i.sugar_100g, i.fat_100g,
+             i.source, i.code, i.portion_name, i.portion_count if i.portion_name else None))
+        return template_dict(conn, t)
 
 
 class TemplateIn(BaseModel):
@@ -1669,14 +1806,14 @@ def api_undo_drink(kind: DrinkKind, u=Depends(token_user)):
 
 # ---------------------------------------------------------------- Feature Requests
 
-FEEDBACK_KINDS = {"feature": "Feature Request", "bug": "Bug Report"}
+FEEDBACK_KINDS = {"feature": "Feature Request", "bug": "Bug Report", "food": "Lebensmittel-Meldung"}
 SCREENSHOT_MAX_BYTES = 3 * 1024 * 1024
 SCREENSHOT_TYPES = {b"\xff\xd8\xff": ("jpg", "image/jpeg"), b"\x89PNG": ("png", "image/png")}
 
 
 class FeedbackIn(BaseModel):
     text: str = Field(min_length=5, max_length=2000)
-    kind: Literal["feature", "bug"] = "feature"
+    kind: Literal["feature", "bug", "food"] = "feature"
     # Technische Angaben vom Gerät (nur bei Bug Reports): Version, Browser, Ansicht, letzte JS-Fehler …
     meta: dict[str, str | int | float | bool | None] | None = None
     screenshot: str | None = Field(default=None, max_length=5_000_000)  # data:image/…;base64,…
@@ -1881,7 +2018,8 @@ def admin_feedback_screenshot(fid: int, a=Depends(admin_user)):
 def admin_foods(a=Depends(admin_user)):
     with db() as conn:
         rows = conn.execute("""
-            SELECT c.id, c.name, c.manufacturer, c.brand, c.code, c.kcal_100g, c.created, u.username AS created_by,
+            SELECT c.id, c.name, c.manufacturer, c.brand, c.code, c.kcal_100g, c.protein_100g, c.carbs_100g,
+                   c.sugar_100g, c.fat_100g, c.created, u.username AS created_by,
                    (SELECT COUNT(*) FROM food_entries f WHERE f.source = 'Bissfest-DB'
                       AND (f.code = 'custom:' || c.id OR (c.code != '' AND f.code = c.code))) AS uses
             FROM custom_foods c LEFT JOIN users u ON u.id = c.created_by ORDER BY c.name COLLATE NOCASE""").fetchall()
@@ -1895,6 +2033,56 @@ def admin_delete_food(food_id: int, a=Depends(admin_user)):
         cur = conn.execute("DELETE FROM custom_foods WHERE id=?", (food_id,))
     if not cur.rowcount:
         raise HTTPException(404, "Lebensmittel nicht gefunden")
+    return {"ok": True}
+
+
+def portion_food_info(conn: sqlite3.Connection, key: str) -> dict:
+    """Name zu einem Portionsschlüssel. Portionen speichern nur den Schlüssel, der Name steht in den Einträgen."""
+    if key.startswith("n:"):
+        name, _, brand = key[2:].partition("|")
+        where, params, fallback = "LOWER(name)=? AND LOWER(brand)=?", (name, brand), {"name": name, "brand": brand, "source": ""}
+    elif key.startswith("usda:"):
+        where, params, fallback = "code=? AND source='USDA'", (key[5:],), {"name": f"USDA {key[5:]}", "brand": "", "source": "USDA"}
+    else:
+        where, params, fallback = "code=?", (key,), {"name": f"Barcode {key}", "brand": "", "source": ""}
+    for table in ("food_entries", "meal_template_items"):
+        row = conn.execute(f"SELECT name, brand, source FROM {table} WHERE {where} ORDER BY id DESC LIMIT 1", params).fetchone()
+        if row:
+            return dict(row)
+    return fallback
+
+
+@app.get("/api/admin/portions")
+def admin_portions(a=Depends(admin_user)):
+    """Lebensmittel aus anderen Datenbanken, für die Portionen gespeichert sind."""
+    foods = {}
+    with db() as conn:
+        own_codes = {r["code"] for r in conn.execute("SELECT code FROM custom_foods WHERE code != ''")}
+        rows = conn.execute("""SELECT p.id, p.food_key, p.name, p.grams, u.username AS created_by FROM food_portions p
+                               LEFT JOIN users u ON u.id = p.created_by WHERE p.food_key NOT LIKE 'custom:%'
+                               ORDER BY p.grams""").fetchall()
+        for r in rows:
+            if r["food_key"] in own_codes:  # steht schon in der Liste der Bissfest-Datenbank
+                continue
+            food = foods.get(r["food_key"])
+            if not food:
+                food = foods[r["food_key"]] = {"key": r["food_key"], **portion_food_info(conn, r["food_key"]), "portions": []}
+            food["portions"].append({"id": r["id"], "name": r["name"], "grams": r["grams"], "created_by": r["created_by"]})
+    return sorted(foods.values(), key=lambda f: f["name"].lower())
+
+
+class AdminPortionNew(PortionEdit):
+    food_key: str = Field(min_length=1, max_length=330)
+
+
+@app.post("/api/admin/portions")
+def admin_add_portion(p: AdminPortionNew, a=Depends(admin_user)):
+    try:
+        with db() as conn:
+            conn.execute("INSERT INTO food_portions (food_key, name, grams, created_by, created) VALUES (?,?,?,?,?)",
+                         (p.food_key, p.name.strip(), p.grams, a["id"], int(time.time())))
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "Dieses Lebensmittel hat schon eine Portion mit diesem Namen")
     return {"ok": True}
 
 

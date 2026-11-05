@@ -62,3 +62,15 @@ body.admin .toast { bottom: 24px; }
 }
 #max-users-form { align-items: flex-end; }
 #max-users-form .grow { flex: 1; }
+
+.food-dialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); border: 0; border-radius: var(--radius); background: var(--card); color: var(--text); padding: 20px; }
+.food-dialog::backdrop { background: rgba(0, 0, 0, .5); }
+.food-dialog h2 { margin: 0; }
+.food-portions { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.food-portions li { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+.portion-foods { list-style: none; margin: 8px 0 0; padding: 0; }
+.portion-foods li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.portion-edit { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.portion-edit li { display: grid; grid-template-columns: 1fr 90px; gap: 6px; }
+.portion-edit li .btn { width: 100%; }

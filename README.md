@@ -107,7 +107,7 @@ Unter `/admin` (z. B. https://bissfest.example.de/admin) für alle Benutzer aus 
 - **Übersicht:** Nutzer, Aktivität, Einträge, offenes Feedback, Diagramm der letzten 30/90 Tage
 - **Nutzer:** Konten mit letzter Aktivität; Bestätigungsmail erneut senden, manuell bestätigen, löschen
 - **Feedback:** Ideen und Bug Reports mit Screenshot und technischen Angaben, als erledigt markieren, antworten
-- **Lebensmittel:** gemeinsame Bissfest-Datenbank mit Nutzungshäufigkeit, Einträge löschen
+- **Lebensmittel:** gemeinsame Bissfest-Datenbank mit Nutzungshäufigkeit, Einträge und Portionen bearbeiten oder löschen, dazu Portionen von Lebensmitteln aus Open Food Facts und USDA
 - **System:** Backup-, Mail-, Speicher- und Push-Status; Registrierung und Konten-Limit ohne Neustart ändern
 
 Aus Datenschutzgründen zeigt das Dashboard keine Mahlzeiten, Gewichte oder Körperdaten anderer Nutzer.
@@ -123,7 +123,7 @@ Die passende Integration hat ein eigenes Repository: **bissfest-homeassistant**
 
 Die offizielle Android-App (Trusted Web Activity) funktioniert mit **jedem Bissfest-Server**: Beim ersten Start fragt
 sie nach der Server-Adresse (HTTPS), prüft sie und öffnet Bissfest danach im Vollbild. Wechseln lässt sich der Server
-über Einstellungen → „Server wechseln“ oder lange auf das App-Symbol tippen. Die iOS-Web-App läuft ohnehin auf jedem Server.
+über Einstellungen → Profil → „Server wechseln“ oder lange auf das App-Symbol tippen. Die iOS-Web-App läuft ohnehin auf jedem Server.
 
 Jeder Server liefert dafür `/.well-known/assetlinks.json` mit Paketname und Zertifikat der offiziellen App aus
 (Standardwerte von `ANDROID_PACKAGE`/`ANDROID_CERT_SHA256`). In den Einstellungen sehen Android-Nutzer einen
@@ -212,6 +212,10 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.11.3** – „Server wechseln“ im Profil, Farbe wie die anderen Knöpfe
+- **2.11.2** – Portionen ändern und löschen nur noch Ersteller und Admin, eigene Portionen direkt beim Lebensmittel
+- **2.11.1** – Admin-Dashboard: Portionen von Lebensmitteln aus Open Food Facts und USDA bearbeiten
+- **2.11.0** – Eigene Lebensmittel und Gerichte bearbeiten, Lebensmittel-Probleme an den Admin melden, Bearbeiten im Admin-Dashboard
 - **2.10.1** – Trophäen als Bild und Text über das Teilen-Menü des Geräts teilen
 - **2.10.0** – Trophäen für Dranbleiben, Abnehmen, Wasser, Kalorienziel und mehr, inklusive geheimer Trophäen
 - **2.9.3** – Richtwerte für TL und EL bei Zucker, Öl, Mehl und Co., auch im Tabellen-Import

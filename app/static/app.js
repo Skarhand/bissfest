@@ -364,11 +364,14 @@ function initDay() {
 
 /* ------------------------------------------------------------ Lebensmittel-Sheet */
 
+const SHEET_SUBPAGES = ["amount", "template", "import", "food-edit", "food-report", "template-edit"];
+
 function showTab(name) {
   $$("#sheet .tab").forEach((t) => t.classList.add("hidden"));
   $("#tab-" + name).classList.remove("hidden");
   $$("#sheet-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-  $("#sheet-tabs").classList.toggle("hidden", name === "amount" || name === "template" || name === "import");
+  $("#sheet-tabs").classList.toggle("hidden", SHEET_SUBPAGES.includes(name));
+  if (state.templateAdd && ["templates", "template", "template-edit"].includes(name)) endTemplateAdd();
   if (name === "recent") loadRecent();
   if (name === "templates") loadTemplates();
   if (name === "search") setTimeout(() => $("#search-q").focus(), 50);
@@ -384,6 +387,7 @@ function openSheet(meal) {
 }
 
 function closeSheet() {
+  state.templateAdd = null;
   $("#sheet").classList.add("hidden");
   document.body.style.overflow = "";
   stopScan();
@@ -607,8 +611,47 @@ function openTemplate(t) {
   showTab("template");
 }
 
+function openTemplateEdit(t) {
+  $("#te-err").textContent = "";
+  $("#te-name").value = t.name;
+  $("#te-items").innerHTML = t.items.map((i) => `<li data-id="${i.id}"><span class="edit-name">${esc(i.name)}</span>
+    <input type="number" inputmode="decimal" step="any" min="0.1" max="5000" required value="${i.grams}" aria-label="Gramm">
+    <button type="button" class="edit-remove" data-remove aria-label="Zutat entfernen">✕</button></li>`).join("");
+  showTab("template-edit");
+}
+
+async function saveTemplateEdit() {
+  $("#te-err").textContent = "";
+  if (!$("#tab-template-edit").reportValidity()) return null;
+  const items = $$("#te-items li").map((li) => ({ id: +li.dataset.id, grams: parseFloat(li.querySelector("input").value) }));
+  try {
+    return await api("/templates/" + state.template.id, { method: "PUT", body: { name: $("#te-name").value.trim(), items } });
+  } catch (err) { $("#te-err").textContent = err.message; return null; }
+}
+
+function endTemplateAdd() {
+  state.templateAdd = null;
+  $("#sheet-title").textContent = state.user.meal_names[state.meal] + " – hinzufügen";
+}
+
 function initTemplates() {
   $("#t-back").onclick = () => showTab("templates");
+  $("#t-edit").onclick = () => openTemplateEdit(state.template);
+  $("#te-back").onclick = () => showTab("template");
+  $("#te-items").onclick = (e) => { if (e.target.closest("[data-remove]")) e.target.closest("li").remove(); };
+  $("#tab-template-edit").onsubmit = async (e) => {
+    e.preventDefault();
+    const t = await saveTemplateEdit();
+    if (t) { toast("Gericht gespeichert"); openTemplate(t); }
+  };
+  $("#te-add").onclick = async () => {
+    const t = await saveTemplateEdit();
+    if (!t) return;
+    state.template = t;
+    state.templateAdd = t.id;
+    $("#sheet-title").textContent = `Zutat für ${t.name}`;
+    showTab("search");
+  };
   $("#t-apply").onclick = async () => {
     try {
       const r = await api(`/templates/${state.template.id}/apply`, {
@@ -640,6 +683,106 @@ function fmtCount(n) {
 }
 const fmtPortion = (count, name) => `${fmtCount(count)} × ${name}`;
 
+// Eigene Lebensmittel (und als Admin alle aus der Bissfest-DB) lassen sich bearbeiten, alles andere melden
+function setupFoodActions(f, seq) {
+  const apply = (custom) => {
+    const editable = !!custom && (custom.mine || state.user.is_admin);
+    state.custom = custom;
+    $("#a-edit-food").classList.toggle("hidden", !editable);
+    $("#a-report-food").classList.toggle("hidden", editable);
+  };
+  apply(f.custom_id ? f : null);
+  if (f.custom_id || f.source !== "Bissfest-DB" || !f.code) return;
+  api("/foods/custom/resolve?" + new URLSearchParams({ code: f.code }))
+    .then((custom) => { if (seq === state.pickSeq) apply(custom); }).catch(() => {});
+}
+
+async function renderFoodPortions() {
+  const c = state.custom;
+  const q = new URLSearchParams({ name: c.name, brand: c.brand || "", source: "Bissfest-DB", code: c.code });
+  const r = await api("/portions?" + q).catch(() => ({ saved: [] }));
+  $("#fe-portions").innerHTML = r.saved.map((p) => `<li><span class="edit-name">${esc(p.name)} · ${fmt(p.grams, p.grams % 1 ? 1 : 0)} g</span>
+    ${p.mine || state.user.is_admin ? `<button type="button" class="edit-remove" data-portion="${p.id}" aria-label="Portion löschen">✕</button>` : ""}</li>`).join("")
+    || `<li class="muted tiny">Noch keine Portion gespeichert</li>`;
+}
+
+function openFoodEdit() {
+  const c = state.custom;
+  $("#fe-err").textContent = "";
+  $("#fe-name").value = c.name;
+  $("#fe-manufacturer").value = c.manufacturer || "";
+  $("#fe-brand").value = c.brand_name || "";
+  $("#fe-code").value = c.code.startsWith("custom:") ? "" : c.code;
+  [["kcal", "kcal_100g"], ["protein", "protein_100g"], ["fat", "fat_100g"], ["carbs", "carbs_100g"], ["sugar", "sugar_100g"]]
+    .forEach(([id, key]) => { $("#fe-" + id).value = c[key] ?? ""; });
+  $("#fe-p-name").value = $("#fe-p-grams").value = "";
+  renderFoodPortions();
+  showTab("food-edit");
+}
+
+function initFoodEdit() {
+  const num = (id) => { const v = $(id).value.replace(",", "."); return v === "" ? null : parseFloat(v); };
+  const reopen = (food) => (state.editId ? pickFood(state.pick, state.pickGrams, true) : pickFood(food));
+  $("#a-edit-food").onclick = openFoodEdit;
+  $("#fe-back").onclick = () => reopen(state.custom);
+  $("#tab-food-edit").onsubmit = async (e) => {
+    e.preventDefault();
+    $("#fe-err").textContent = "";
+    try {
+      const food = await api("/foods/custom/" + state.custom.custom_id, {
+        method: "PUT",
+        body: {
+          name: $("#fe-name").value.trim(), manufacturer: $("#fe-manufacturer").value.trim(), brand: $("#fe-brand").value.trim(),
+          code: $("#fe-code").value.trim(), kcal_100g: num("#fe-kcal"), protein_100g: num("#fe-protein"),
+          carbs_100g: num("#fe-carbs"), sugar_100g: num("#fe-sugar"), fat_100g: num("#fe-fat"),
+        },
+      });
+      toast("Lebensmittel gespeichert");
+      reopen(food);
+    } catch (err) { $("#fe-err").textContent = err.message; }
+  };
+  $("#fe-p-save").onclick = async () => {
+    const name = $("#fe-p-name").value.trim(), grams = num("#fe-p-grams");
+    if (!name || !(grams > 0)) return toast("Bitte Portion und Gramm eingeben");
+    try {
+      await savePortion(state.custom, name, grams);
+      $("#fe-p-name").value = $("#fe-p-grams").value = "";
+      renderFoodPortions();
+    } catch (err) { toast(err.message); }
+  };
+  $("#fe-portions").onclick = async (e) => {
+    const id = e.target.closest("[data-portion]")?.dataset.portion;
+    if (!id) return;
+    try {
+      await api("/portions/" + id, { method: "DELETE" });
+      renderFoodPortions();
+    } catch (err) { toast(err.message); }
+  };
+  $("#a-report-food").onclick = () => {
+    const f = state.pick;
+    $("#fr-err").textContent = "";
+    $("#fr-text").value = "";
+    $("#fr-food").textContent = [f.name, f.brand, f.source].filter(Boolean).join(" · ");
+    showTab("food-report");
+  };
+  $("#fr-back").onclick = () => showTab("amount");
+  $("#tab-food-report").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = state.pick;
+    try {
+      await api("/feedback", {
+        method: "POST",
+        body: {
+          kind: "food", text: $("#fr-text").value.trim(),
+          meta: { Lebensmittel: f.name, Marke: f.brand || "", Quelle: f.source || "", Code: f.code || "", custom_id: state.custom?.custom_id ?? null },
+        },
+      });
+      toast("Danke, deine Nachricht ist beim Admin");
+      showTab("amount");
+    } catch (err) { $("#fr-err").textContent = err.message; }
+  };
+}
+
 function pickFood(f, grams, isEdit = false) {
   stopScan();
   state.pick = f;
@@ -653,7 +796,10 @@ function pickFood(f, grams, isEdit = false) {
   state.units = [{ name: null, grams: 1 }];
   selectUnit(0, grams ?? f.grams ?? 100);
   fillMealSelect(state.meal);
-  $("#a-save").textContent = isEdit ? "Speichern" : "Eintragen";
+  state.pickGrams = grams;
+  setupFoodActions(f, seq);
+  $("#a-meal").closest("label").classList.toggle("hidden", !!state.templateAdd);
+  $("#a-save").textContent = state.templateAdd ? "Zum Gericht hinzufügen" : isEdit ? "Speichern" : "Eintragen";
   $("#a-delete").classList.toggle("hidden", !isEdit);
   $("#a-back").classList.toggle("hidden", isEdit);
   $("#a-delete-custom").classList.toggle("hidden", isEdit || !(f.custom_id && f.mine));
@@ -688,6 +834,34 @@ async function loadUnits(f) {
   return units;
 }
 
+// Portionen, die dieser Nutzer ändern darf
+function renderMyPortions() {
+  const own = state.units.filter((u) => u.kind === "saved" && (u.mine || state.user.is_admin));
+  $("#a-my-portions").innerHTML = own.map((u) => `<li data-id="${u.id}">
+    <input class="portion-name" maxlength="30" value="${esc(u.name)}" aria-label="Portion">
+    <input class="portion-grams" type="number" inputmode="decimal" step="any" min="0.1" max="3000" value="${u.grams}" aria-label="Gramm">
+    <button type="button" class="edit-save" data-save aria-label="Portion speichern">✓</button>
+    <button type="button" class="edit-remove" data-remove aria-label="Portion löschen">✕</button></li>`).join("");
+}
+
+async function changeMyPortion(e) {
+  const row = e.target.closest("li[data-id]");
+  const save = e.target.closest("[data-save]"), remove = e.target.closest("[data-remove]");
+  if (!row || !(save || remove)) return;
+  const grams = Math.round(currentGrams()) || 100;
+  try {
+    if (save) {
+      const body = { name: row.querySelector(".portion-name").value.trim(), grams: parseFloat(row.querySelector(".portion-grams").value.replace(",", ".")) };
+      if (!body.name || !(body.grams > 0)) return toast("Bitte Name und Gramm angeben");
+      await api("/portions/" + row.dataset.id, { method: "PUT", body });
+    } else await api("/portions/" + row.dataset.id, { method: "DELETE" });
+    state.units = await loadUnits(state.pick);
+    selectUnit(0, grams);
+    renderMyPortions();
+    toast(save ? "Portion gespeichert" : "Portion gelöscht");
+  } catch (err) { toast(err.message); }
+}
+
 function selectUnit(i, qty) {
   state.unit = i;
   const u = state.units[i];
@@ -698,6 +872,7 @@ function selectUnit(i, qty) {
   $$("#a-units [data-u]").forEach((b) => (b.onclick = () => selectUnit(+b.dataset.u, +b.dataset.u ? 1 : Math.round(currentGrams()) || 100)));
   $("#a-add-portion").onclick = () => {
     $("#a-new-portion").classList.toggle("hidden");
+    renderMyPortions();
     $("#np-name").focus();
   };
   $("#a-qty-label").textContent = u.name ? `Anzahl ${u.name}` : "Menge (g / ml)";
@@ -748,6 +923,20 @@ async function saveAmount(e) {
   try {
     // Vorgeschlagene oder aus der Datenbank stammende Portion beim ersten Benutzen dauerhaft merken
     if (u.name && u.kind !== "saved") await savePortion(f, u.name, u.grams).catch(() => {});
+    if (state.templateAdd) {
+      const t = await api(`/templates/${state.templateAdd}/items`, {
+        method: "POST",
+        body: {
+          grams, name: f.name, brand: f.brand || "", kcal_100g: f.kcal_100g, protein_100g: f.protein_100g ?? null,
+          carbs_100g: f.carbs_100g ?? null, sugar_100g: f.sugar_100g ?? null, fat_100g: f.fat_100g ?? null,
+          source: f.source || "manuell", code: f.code || "", ...portion,
+        },
+      });
+      state.template = t;
+      toast("Zutat hinzugefügt");
+      openTemplateEdit(t);
+      return;
+    }
     if (state.editId) {
       await api("/food/" + state.editId, { method: "PATCH", body: { grams, meal, ...portion } });
     } else {
@@ -804,6 +993,7 @@ function initSheet() {
     } catch (err) { $("#m-err").textContent = err.message; }
   };
   initImport();
+  initFoodEdit();
   $("#a-delete-custom").onclick = async () => {
     if (!confirm(`„${state.pick.name}“ für alle Nutzer aus der Bissfest-Datenbank löschen? Bereits eingetragene Mahlzeiten bleiben erhalten.`)) return;
     try {
@@ -815,6 +1005,7 @@ function initSheet() {
   };
   initTemplates();
   $("#a-grams").oninput = updatePreview;
+  $("#a-my-portions").onclick = changeMyPortion;
   $("#np-save").onclick = async () => {
     const name = $("#np-name").value.trim(), grams = parseFloat($("#np-grams").value.replace(",", "."));
     if (!name || !(grams > 0)) return toast("Bitte Name und Gramm angeben");

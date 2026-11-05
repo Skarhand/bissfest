@@ -60,6 +60,7 @@
           <button data-f="offen" class="active">Offen</button>
           <button data-f="bug">🐞 Bugs</button>
           <button data-f="feature">💡 Ideen</button>
+          <button data-f="food">🥫 Lebensmittel</button>
           <button data-f="alle">Alle</button>
         </div>
       </div>
@@ -73,7 +74,64 @@
       <input type="search" id="foods-search" placeholder="Filtern nach Name, Marke, Hersteller, Barcode …">
       <div class="table-wrap"><table class="admin-table" id="foods-table"></table></div>
     </div>
+    <div class="card">
+      <div class="card-head"><h2>Portionen aus anderen Datenbanken</h2><span class="muted tiny" id="portions-count"></span></div>
+      <p class="muted tiny">Lebensmittel aus Open Food Facts und USDA, für die Nutzer Portionen gespeichert haben.
+        Die Nährwerte kommen aus der jeweiligen Datenbank, die Portionen lassen sich hier ändern.</p>
+      <input type="search" id="portions-search" placeholder="Filtern nach Name, Marke, Portion …">
+      <ul class="portion-foods" id="portions-list"></ul>
+    </div>
   </section>
+
+  <dialog id="portion-dialog" class="food-dialog">
+    <form class="form" id="portion-form">
+      <h2 id="pd-title"></h2>
+      <p class="muted tiny" id="pd-meta"></p>
+      <ul class="portion-edit" id="pd-list"></ul>
+      <h2>Neue Portion</h2>
+      <div class="row2">
+        <label>Portion<input id="pd-new-name" maxlength="30" placeholder="z. B. EL"></label>
+        <label>Gramm<input id="pd-new-grams" type="number" step="any" min="0.1" max="3000"></label>
+      </div>
+      <button class="btn small">Portion anlegen</button>
+      <p class="err" id="pd-err"></p>
+      <div class="fb-actions"><button type="button" class="btn" id="pd-close">Schließen</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="food-dialog" class="food-dialog">
+    <form class="form" id="food-form">
+      <h2>Lebensmittel bearbeiten</h2>
+      <p class="muted tiny">Eingetragene Mahlzeiten der Nutzer bleiben unverändert.</p>
+      <label>Bezeichnung *<input id="ad-name" required maxlength="120"></label>
+      <div class="row2">
+        <label>Hersteller<input id="ad-manufacturer" maxlength="120"></label>
+        <label>Marke<input id="ad-brand" maxlength="120"></label>
+      </div>
+      <label>Barcode<input id="ad-code" inputmode="numeric" pattern="\d{6,14}"></label>
+      <label>Brennwert pro 100 g (kcal) *<input id="ad-kcal" type="number" step="0.1" min="0" max="1000" required></label>
+      <div class="row2">
+        <label>Eiweiß (g)<input id="ad-protein" type="number" step="0.1" min="0" max="100"></label>
+        <label>Fett (g)<input id="ad-fat" type="number" step="0.1" min="0" max="100"></label>
+      </div>
+      <div class="row2">
+        <label>Kohlenhydrate (g)<input id="ad-carbs" type="number" step="0.1" min="0" max="100"></label>
+        <label>davon Zucker (g)<input id="ad-sugar" type="number" step="0.1" min="0" max="100"></label>
+      </div>
+      <h2>Portionen</h2>
+      <ul class="food-portions" id="ad-portions"></ul>
+      <div class="row2">
+        <label>Portion<input id="ad-p-name" maxlength="30" placeholder="z. B. Becher"></label>
+        <label>Gramm<input id="ad-p-grams" type="number" step="any" min="0.1" max="3000"></label>
+      </div>
+      <button type="button" class="btn small" id="ad-p-save">Portion speichern</button>
+      <p class="err" id="ad-err"></p>
+      <div class="fb-actions">
+        <button class="btn primary">Speichern</button>
+        <button type="button" class="btn" id="ad-cancel">Schließen</button>
+      </div>
+    </form>
+  </dialog>
 
   <section class="admin-tab hidden" id="tab-system">
     <div class="card form">

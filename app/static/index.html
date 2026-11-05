@@ -230,7 +230,6 @@
       </details>
     </div>
     <div class="card">
-      <a class="btn hidden" id="switch-server" href="bissfest://setup">📱 Server wechseln</a>
       <p class="muted tiny center">Nährwerte: Open Food Facts (ODbL) und USDA FoodData Central.</p>
       <p class="muted tiny center">Freie Software unter der <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">AGPL-3.0</a><span id="source-link" class="hidden"> · <a target="_blank" rel="noopener">Quellcode</a></span></p>
       <p class="muted tiny center" id="settings-version"></p>
@@ -268,6 +267,7 @@
       <p class="ok" id="pw-msg"></p>
     </form>
     <a class="btn hidden" id="admin-link" href="/admin">🛠️ Admin-Dashboard</a>
+    <a class="btn hidden" id="switch-server" href="bissfest://setup">📱 Server wechseln</a>
     <button class="btn danger" id="logout">Abmelden</button>
   </main>
 
@@ -473,6 +473,7 @@
       <label>Mahlzeit<select id="t-meal"></select></label>
       <div class="kcal-preview"><strong id="t-kcal">0</strong> kcal</div>
       <button type="button" class="btn primary" id="t-apply">Gericht eintragen</button>
+      <button type="button" class="btn" id="t-edit">✏️ Gericht bearbeiten</button>
       <button type="button" class="btn danger" id="t-delete">Gericht löschen</button>
       <button type="button" class="link" id="t-back">‹ Zurück zu den Gerichten</button>
     </div>
@@ -508,6 +509,65 @@
       <p class="err" id="m-err"></p>
     </form>
 
+    <!-- Gericht bearbeiten -->
+    <form class="tab form hidden" id="tab-template-edit">
+      <button type="button" class="back-link" id="te-back">‹ Zurück</button>
+      <h2>Gericht bearbeiten</h2>
+      <label>Name<input id="te-name" required maxlength="80"></label>
+      <div class="field-title">Zutaten (Gramm)</div>
+      <ul class="edit-list" id="te-items"></ul>
+      <button type="button" class="btn" id="te-add">+ Zutat hinzufügen</button>
+      <p class="muted tiny">Bereits eingetragene Mahlzeiten bleiben unverändert.</p>
+      <button class="btn primary">Speichern</button>
+      <p class="err" id="te-err"></p>
+    </form>
+
+    <!-- Lebensmittel bearbeiten -->
+    <form class="tab form hidden" id="tab-food-edit">
+      <button type="button" class="back-link" id="fe-back">‹ Zurück</button>
+      <h2>Lebensmittel bearbeiten</h2>
+      <p class="muted tiny">Änderungen gelten für alle Nutzer. Bereits eingetragene Mahlzeiten bleiben unverändert.</p>
+      <label>Bezeichnung *<input id="fe-name" required maxlength="120"></label>
+      <div class="row2">
+        <label>Hersteller<input id="fe-manufacturer" maxlength="120"></label>
+        <label>Marke<input id="fe-brand" maxlength="120"></label>
+      </div>
+      <label>Barcode (optional)<input id="fe-code" inputmode="numeric" pattern="\d{6,14}"></label>
+      <h2>Nährwerte pro 100 g</h2>
+      <label>Brennwert (kcal) *<input id="fe-kcal" type="number" inputmode="decimal" step="0.1" min="0" max="1000" required></label>
+      <div class="row2">
+        <label>Eiweiß (g)<input id="fe-protein" type="number" inputmode="decimal" step="0.1" min="0" max="100"></label>
+        <label>Fett (g)<input id="fe-fat" type="number" inputmode="decimal" step="0.1" min="0" max="100"></label>
+      </div>
+      <div class="row2">
+        <label>Kohlenhydrate (g)<input id="fe-carbs" type="number" inputmode="decimal" step="0.1" min="0" max="100"></label>
+        <label>davon Zucker (g)<input id="fe-sugar" type="number" inputmode="decimal" step="0.1" min="0" max="100"></label>
+      </div>
+      <button class="btn primary">Speichern</button>
+      <p class="err" id="fe-err"></p>
+      <h2>Portionen</h2>
+      <ul class="edit-list" id="fe-portions"></ul>
+      <div class="row2">
+        <label>Portion<input id="fe-p-name" list="portion-names" placeholder="z. B. Becher" maxlength="30"></label>
+        <label>Gramm pro Portion<input id="fe-p-grams" type="number" inputmode="decimal" step="any" min="0.1" max="3000"></label>
+      </div>
+      <button type="button" class="btn small" id="fe-p-save">Portion speichern</button>
+      <p class="muted tiny">Eigene Portionen änderst du, indem du sie mit gleichem Namen neu speicherst.</p>
+    </form>
+
+    <!-- Problem melden -->
+    <form class="tab form hidden" id="tab-food-report">
+      <button type="button" class="back-link" id="fr-back">‹ Zurück</button>
+      <h2>Problem melden</h2>
+      <p class="muted tiny" id="fr-food"></p>
+      <label>Was stimmt nicht?<textarea id="fr-text" rows="5" minlength="5" maxlength="2000" required
+        placeholder="z. B. Die Kalorien sind zu hoch, laut Packung 120 kcal pro 100 g."></textarea></label>
+      <p class="muted tiny">Die Nachricht geht an den Admin. Er kann Lebensmittel aus der Bissfest-Datenbank korrigieren,
+        Einträge aus Open Food Facts und USDA dagegen nicht.</p>
+      <button class="btn primary">Nachricht senden</button>
+      <p class="err" id="fr-err"></p>
+    </form>
+
     <!-- Tabellen-Import -->
     <div class="tab form hidden" id="tab-import">
       <button type="button" class="back-link" id="import-back">‹ Zurück</button>
@@ -535,12 +595,13 @@
       <div class="field-title">Einheit</div>
       <div class="chips units" id="a-units"></div>
       <div class="portion-new hidden" id="a-new-portion">
+        <ul class="edit-list" id="a-my-portions"></ul>
         <div class="row2">
           <label>Portion<input id="np-name" list="portion-names" placeholder="z. B. Scheibe" maxlength="30"></label>
           <label>Gramm pro Portion<input id="np-grams" type="number" inputmode="decimal" step="any" min="0.1" max="3000" placeholder="z. B. 25"></label>
         </div>
         <button type="button" class="btn small" id="np-save">Portion speichern</button>
-        <p class="muted tiny">Gilt für dieses Lebensmittel bei allen Bissfest-Nutzern. Gleicher Name überschreibt die Grammzahl.</p>
+        <p class="muted tiny">Gilt für dieses Lebensmittel bei allen Bissfest-Nutzern. Ändern kann eine Portion nur, wer sie angelegt hat.</p>
       </div>
       <label><span id="a-qty-label">Menge (g / ml)</span>
         <input id="a-grams" type="number" inputmode="decimal" step="any" min="0.1" max="5000" required>
@@ -551,6 +612,8 @@
       <div class="kcal-preview"><strong id="a-kcal">0</strong> kcal</div>
       <button class="btn primary" id="a-save">Eintragen</button>
       <button type="button" class="btn danger hidden" id="a-delete">Eintrag löschen</button>
+      <button type="button" class="btn hidden" id="a-edit-food">✏️ Lebensmittel bearbeiten</button>
+      <button type="button" class="btn hidden" id="a-report-food">⚠️ Problem melden</button>
       <button type="button" class="btn danger hidden" id="a-delete-custom">Aus der Bissfest-Datenbank löschen</button>
       <button type="button" class="link" id="a-back">‹ Zurück zur Auswahl</button>
     </form>

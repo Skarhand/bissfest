@@ -345,7 +345,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .goal-hint { border: 2px solid var(--accent); background: var(--accent-soft); gap: 8px; }
 .goal-hint p { margin: 0; }
 .goal-hint .btn-row .btn { flex: 1; }
-#switch-server { display: block; text-align: center; text-decoration: none; margin-top: 8px; }
+#switch-server { display: block; color: var(--text); text-align: center; text-decoration: none; }
 
 /* Profilbild */
 .avatar {
@@ -398,3 +398,18 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .trophy-pop-icon { font-size: 2rem; }
 .trophy-pop strong, .trophy-pop .tiny { display: block; }
 .trophy-share { margin-top: 4px; }
+
+/* Lebensmittel und Gerichte bearbeiten */
+#tab-food-edit .back-link, #tab-food-report .back-link, #tab-template-edit .back-link { justify-self: start; }
+#tab-food-edit h2, #tab-food-report h2, #tab-template-edit h2 { margin: 0; }
+.edit-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.edit-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.edit-list .edit-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.edit-list input { width: 84px; flex: none; }
+.edit-remove { flex: none; width: 36px; height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--danger); font: inherit; cursor: pointer; }
+#a-my-portions:not(:empty) { margin-bottom: 10px; }
+.edit-list input.portion-name { flex: 1; width: auto; min-width: 0; }
+.edit-list input.portion-grams { width: 72px; }
+.edit-save { flex: none; width: 36px; height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
+.portion-new { min-width: 0; }
+.edit-list { grid-template-columns: minmax(0, 1fr); }
