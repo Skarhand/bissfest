@@ -95,9 +95,10 @@ def run_backup() -> Path:
             vapid_key = Path(DB_PATH).with_name("vapid_private.pem")  # Push-Schlüssel, sonst müssen Geräte neu aktivieren
             if vapid_key.exists():
                 tar.add(vapid_key, arcname="vapid_private.pem")
-            shots = Path(DB_PATH).with_name("feedback")  # Screenshots aus Bug Reports
-            if shots.is_dir():
-                tar.add(shots, arcname="feedback")
+            for folder in ("feedback", "avatars"):  # Screenshots aus Bug Reports, Profilbilder
+                path = Path(DB_PATH).with_name(folder)
+                if path.is_dir():
+                    tar.add(path, arcname=folder)
             for arcname, data in exports.items():
                 blob = json.dumps(data, ensure_ascii=False, indent=1).encode()
                 info = tarfile.TarInfo(arcname)

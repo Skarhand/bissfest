@@ -1020,7 +1020,13 @@ const MEAL_NAMES = ["Frühstück", "Mittagessen", "Abendessen", "Snack 1", "Snac
 function fillSettings() {
   const u = state.user;
   $("#s-user").textContent = u.username;
+  renderAvatars();
   $("#email-current").textContent = u.email || "keine hinterlegt";
+  $("#profile-summary").textContent = `${u.username} · ${u.email || "keine E-Mail hinterlegt"}`;
+  $("#goals-summary").textContent = `${fmt(u.kcal_goal)} kcal · ${fmt(u.water_goal_ml / 1000, 1)} l Wasser · ${u.meals_per_day} Mahlzeiten`;
+  const times = Object.keys(u.reminders || {}).length;
+  $("#reminders-summary").textContent = times ? `${times} ${times === 1 ? "Uhrzeit" : "Uhrzeiten"} eingestellt` : "Noch keine Uhrzeiten eingestellt";
+  $("#extras-summary").textContent = ["Kaffee", "Tee"].filter((_, i) => [u.coffee_enabled, u.tea_enabled][i]).concat("Home Assistant").join(" · ");
   $("#admin-link").classList.toggle("hidden", !u.is_admin);
   $("#s-kcal").value = u.kcal_goal;
   $("#s-water").value = u.water_goal_ml;
@@ -1127,6 +1133,10 @@ function initSettings() {
   $("#body-form").onsubmit = (e) => { e.preventDefault(); saveSettings("#body-msg"); };
   $("#open-body").onclick = () => showView("body");
   $("#body-back").onclick = () => showView("settings");
+  ["profile", "goals", "reminders", "extras"].forEach((key) => {
+    $(`#open-${key}`).onclick = () => showView(key);
+    $(`#${key}-back`).onclick = () => showView("settings");
+  });
   $("#email-form").onsubmit = async (e) => {
     e.preventDefault();
     $("#email-msg").textContent = "";
@@ -1200,7 +1210,7 @@ async function refreshPush() {
     const n = r ? r.push_devices : state.user.push_devices;
     const anyTime = Object.keys(state.user.reminders || {}).length;
     status.textContent = `Aktiv auf diesem Gerät (${n} Gerät${n === 1 ? "" : "e"} insgesamt).` +
-      (anyTime ? "" : " Trage oben bei den Mahlzeiten Uhrzeiten ein, damit Erinnerungen kommen.");
+      (anyTime ? "" : " Trage unter Ziele bei den Mahlzeiten Uhrzeiten ein, damit Erinnerungen kommen.");
     show(false, true);
   } else {
     status.textContent = "Erhalte zu den eingestellten Uhrzeiten eine Erinnerung, deine Mahlzeit einzutragen.";
@@ -1415,6 +1425,56 @@ function initOnboarding() {
   };
 }
 
+/* ------------------------------------------------------------ Profilbild */
+
+function renderAvatars() {
+  const u = state.user;
+  $$("[data-avatar]").forEach((el) => {
+    el.textContent = u.avatar_version ? "" : u.username.charAt(0).toUpperCase();
+    el.style.backgroundImage = u.avatar_version ? `url("/api/avatar?v=${u.avatar_version}")` : "";
+  });
+  $("#avatar-remove").classList.toggle("hidden", !u.avatar_version);
+  $("#avatar-summary").textContent = u.avatar_version ? "Ändern oder löschen" : "Noch kein Bild – jetzt hinzufügen";
+}
+
+// Mittig quadratisch zuschneiden und auf 256 × 256 Pixel verkleinern
+async function cropAvatar(file) {
+  const bitmap = await createImageBitmap(file);
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 256;
+  canvas.getContext("2d").drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, 256, 256);
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
+function initAvatar() {
+  const upload = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const r = await api("/avatar", { method: "PUT", body: { image: await cropAvatar(file) } });
+      state.user.avatar_version = r.avatar_version;
+      renderAvatars();
+      toast("Profilbild gespeichert");
+    } catch (err) { toast(err.message || "Dieses Bild konnte nicht gelesen werden"); }
+  };
+  $("#avatar-file").onchange = upload;
+  $("#avatar-camera").onchange = upload;
+  // Selfie nur auf Geräten mit Touchscreen anbieten, am Computer öffnet capture nur die Dateiauswahl
+  const phone = matchMedia("(pointer: coarse)").matches;
+  $("#avatar-camera-btn").classList.toggle("hidden", !phone);
+  if (phone) $("#avatar-file-btn").textContent = "🖼️ Aus der Galerie";
+  $("#open-avatar").onclick = () => showView("avatar");
+  $("#avatar-back").onclick = () => showView("profile");
+  $("#avatar-remove").onclick = async () => {
+    if (!confirm("Profilbild löschen?")) return;
+    await api("/avatar", { method: "DELETE" }).catch(() => {});
+    state.user.avatar_version = 0;
+    renderAvatars();
+  };
+}
+
 /* ------------------------------------------------------------ Feature Request */
 
 const FEEDBACK_KINDS = {
@@ -1535,7 +1595,7 @@ function initFeedback() {
 
 /* ------------------------------------------------------------ Navigation */
 
-const SUBVIEW_TAB = { body: "settings" };
+const SUBVIEW_TAB = { body: "settings", profile: "settings", goals: "settings", reminders: "settings", extras: "settings", avatar: "settings" };
 
 function showView(view) {
   const tab = SUBVIEW_TAB[view] || view;
@@ -1544,7 +1604,7 @@ function showView(view) {
   $("#view-" + view).classList.remove("hidden");
   $(".topbar").classList.toggle("hidden", view !== "today");
   if (view === "history") loadHistory();
-  if (view === "settings") loadTokens();
+  if (view === "extras") loadTokens();
   window.scrollTo(0, 0);
 }
 
@@ -1571,6 +1631,7 @@ function initNav() {
   initTheme();
   initFeedback();
   initOnboarding();
+  initAvatar();
   initHomeAssistant();
   initNav();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

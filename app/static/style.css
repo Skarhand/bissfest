@@ -196,7 +196,7 @@ label { display: grid; gap: 4px; font-size: .9rem; color: var(--muted); }
   position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 16px);
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 12px; z-index: 30; max-width: 90vw;
 }
-#view-history, #view-settings { padding-top: calc(env(safe-area-inset-top) + 16px); }
+#view-history, #view-settings, #view-body, #view-profile, #view-goals, #view-reminders, #view-extras, #view-avatar { padding-top: calc(env(safe-area-inset-top) + 16px); }
 
 /* Defizit-Rechner */
 .calc { background: var(--bg); border-radius: 12px; padding: 12px; display: grid; gap: 6px; font-size: .9rem; }
@@ -346,3 +346,20 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .goal-hint p { margin: 0; }
 .goal-hint .btn-row .btn { flex: 1; }
 #switch-server { display: block; text-align: center; text-decoration: none; margin-top: 8px; }
+
+/* Profilbild */
+.avatar {
+  display: grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; font-weight: 700;
+  background: var(--accent) center / cover no-repeat; color: var(--on-accent);
+}
+.avatar.small { width: 36px; height: 36px; font-size: 1rem; }
+.avatar.large { width: 88px; height: 88px; font-size: 2.2rem; }
+.profile-head { display: flex; align-items: center; gap: 16px; }
+.profile-head-text { display: grid; gap: 2px; min-width: 0; }
+.profile-head-text strong { font-size: 1.2rem; overflow-wrap: anywhere; }
+.avatar.xlarge { width: 160px; height: 160px; font-size: 4rem; margin: 0 auto; }
+.avatar-page { justify-items: center; }
+.avatar-actions { display: grid; gap: 8px; width: 100%; }
+.avatar-actions label.btn { color: var(--text); cursor: pointer; text-align: center; }
+#logout { width: 100%; }
+#admin-link { color: var(--text); }

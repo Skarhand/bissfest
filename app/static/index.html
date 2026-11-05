@@ -103,8 +103,8 @@
         <div class="card-head"><h2>💧 Wasser</h2><span id="water-text" class="muted"></span></div>
         <div class="bar"><div id="water-bar"></div></div>
         <div class="btn-row">
-          <button class="btn small" data-water="-250">−</button>
-          <button class="btn small" data-water="250">+250</button>
+          <button class="btn small" data-water="-200">−</button>
+          <button class="btn small" data-water="200">+200</button>
           <button class="btn small" data-water="500">+500</button>
         </div>
       </div>
@@ -174,88 +174,31 @@
       </div>
       <p class="muted tiny">„System“ folgt automatisch der Einstellung deines Handys. Gilt für dieses Gerät.</p>
     </div>
-    <div class="card form" id="extras-card">
-      <h2>✨ Extras</h2>
-      <label class="switch-row">
-        <span><strong>☕ Kaffee-Tracker</strong><br><span class="muted tiny">Tassen und Koffein pro Tag zählen</span></span>
-        <input type="checkbox" id="s-coffee" role="switch">
-      </label>
-      <div id="s-coffee-details" class="form">
-        <label>Koffein pro Tasse (150 ml, in mg)<input type="number" id="s-caffeine" inputmode="numeric" min="0" max="500" step="5"></label>
-        <p class="muted tiny">Richtwerte: Filterkaffee ≈ 90 mg, Cappuccino ≈ 75 mg, Espresso ≈ 65 mg, entkoffeiniert ≈ 3 mg.
-          Ein Pott (250 ml) zählt automatisch mit der entsprechend größeren Menge. Milch und Zucker bitte als
-          Lebensmittel eintragen – die Kaffee-Karte zählt keine Kalorien.</p>
-      </div>
-      <label class="switch-row">
-        <span><strong>🍵 Tee-Tracker</strong><br><span class="muted tiny">Tassen und Koffein pro Tag zählen</span></span>
-        <input type="checkbox" id="s-tea" role="switch">
-      </label>
-      <div id="s-tea-details" class="form">
-        <label>Koffein pro Tasse Tee (150 ml, in mg)<input type="number" id="s-tea-caffeine" inputmode="numeric" min="0" max="500" step="5"></label>
-        <p class="muted tiny">Richtwerte: Schwarztee ≈ 45 mg, Grüntee ≈ 30 mg, Mate ≈ 50 mg, Kräuter- und Früchtetee 0 mg.
-          Koffein aus Kaffee und Tee wird für den 400-mg-Hinweis zusammengezählt.</p>
-      </div>
-      <p class="ok" id="extras-msg"></p>
-    </div>
+    <button type="button" class="card menu-item" id="open-profile">
+      <span class="avatar small" data-avatar></span>
+      <span class="mi-text"><strong>Profil</strong><span class="muted tiny" id="profile-summary"></span></span>
+      <span class="chev">›</span>
+    </button>
     <button type="button" class="card menu-item" id="open-body">
       <span class="mi-icon">🧮</span>
       <span class="mi-text"><strong>Körperdaten &amp; Kaloriendefizit</strong><span class="muted tiny" id="body-summary"></span></span>
       <span class="chev">›</span>
     </button>
-    <form class="card form" id="settings-form">
-      <h2>Ziele</h2>
-      <label>Kalorienziel pro Tag (kcal)<input type="number" id="s-kcal" min="800" max="6000" required></label>
-      <label>Wasserziel pro Tag (ml)<input type="number" id="s-water" min="500" max="8000" step="50" required></label>
-      <label>Zielgewicht (kg, optional)<input type="number" id="s-target" min="30" max="400" step="0.1" inputmode="decimal"></label>
-      <h2>Mahlzeiten</h2>
-      <label>Mahlzeiten pro Tag
-        <select id="s-meals"><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select>
-      </label>
-      <p class="muted tiny">Bei 3 Mahlzeiten: Frühstück, Mittagessen, Abendessen – jede weitere ist ein Snack.
-        Die Uhrzeit ist deine Push-Erinnerung (leer = keine). Sie kommt nur, wenn für die Mahlzeit noch nichts eingetragen ist.</p>
-      <div id="s-meal-names"></div>
-      <button class="btn primary">Speichern</button>
-      <p class="ok" id="settings-msg"></p>
-    </form>
-    <div class="card form" id="push-card">
-      <h2>🔔 Erinnerungen</h2>
-      <p class="muted tiny" id="push-status"></p>
-      <button type="button" class="btn primary hidden" id="push-enable">Auf diesem Gerät aktivieren</button>
-      <button type="button" class="btn hidden" id="push-test">Test-Nachricht senden</button>
-      <button type="button" class="btn danger hidden" id="push-disable">Auf diesem Gerät deaktivieren</button>
-    </div>
-    <form class="card form" id="email-form">
-      <h2>E-Mail-Adresse</h2>
-      <p class="muted tiny">Aktuell: <strong id="email-current"></strong>. Die neue Adresse gilt erst, wenn du den Link in der Mail an sie bestätigt hast.</p>
-      <input type="email" id="email-new" placeholder="Neue E-Mail-Adresse" autocomplete="email" autocapitalize="none" required>
-      <input type="password" id="email-pw" placeholder="Aktuelles Passwort" autocomplete="current-password" required>
-      <button class="btn">Bestätigungslink senden</button>
-      <p class="ok" id="email-msg"></p>
-    </form>
-    <form class="card form" id="pw-form">
-      <h2>Passwort ändern</h2>
-      <input type="password" id="pw-old" placeholder="Aktuelles Passwort" autocomplete="current-password" required>
-      <input type="password" id="pw-new" placeholder="Neues Passwort (min. 8)" autocomplete="new-password" minlength="8" required>
-      <button class="btn">Ändern</button>
-      <p class="ok" id="pw-msg"></p>
-    </form>
-    <div class="card form" id="ha-card">
-      <h2>🏠 Home Assistant</h2>
-      <p class="muted tiny">Verbinde Bissfest mit Home Assistant: Kalorien, Wasser, Gewicht, Kaffee &amp; Tee als Sensoren,
-        Knöpfe und Automationen. Erzeuge dafür einen Token und trage ihn zusammen mit der Adresse
-        <code id="ha-url"></code> in der Bissfest-Integration ein.</p>
-      <ul class="token-list" id="ha-tokens"></ul>
-      <div class="token-new hidden" id="ha-new-token">
-        <strong>Dein neuer Token – jetzt kopieren, er wird nur einmal angezeigt:</strong>
-        <code id="ha-token-value"></code>
-        <button type="button" class="btn small" id="ha-token-copy">📋 Kopieren</button>
-      </div>
-      <form class="search-row" id="ha-token-form">
-        <input id="ha-token-name" placeholder="Name, z. B. Home Assistant" maxlength="60" required>
-        <button class="btn primary">Token erzeugen</button>
-      </form>
-      <p class="err" id="ha-err"></p>
-    </div>
+    <button type="button" class="card menu-item" id="open-goals">
+      <span class="mi-icon">🎯</span>
+      <span class="mi-text"><strong>Ziele</strong><span class="muted tiny" id="goals-summary"></span></span>
+      <span class="chev">›</span>
+    </button>
+    <button type="button" class="card menu-item" id="open-reminders">
+      <span class="mi-icon">🔔</span>
+      <span class="mi-text"><strong>Erinnerungen</strong><span class="muted tiny" id="reminders-summary"></span></span>
+      <span class="chev">›</span>
+    </button>
+    <button type="button" class="card menu-item" id="open-extras">
+      <span class="mi-icon">✨</span>
+      <span class="mi-text"><strong>Extras</strong><span class="muted tiny" id="extras-summary"></span></span>
+      <span class="chev">›</span>
+    </button>
     <div class="card form hidden" id="android-card">
       <h2>📱 Bissfest als Android-App</h2>
       <p class="muted tiny">Eigenes App-Symbol, Vollbild ohne Browserleiste, Erinnerungen und Barcode-Scanner wie gewohnt.
@@ -282,14 +225,134 @@
       </details>
     </div>
     <div class="card">
-      <p class="muted">Angemeldet als <strong id="s-user"></strong></p>
-      <a class="btn hidden" id="admin-link" href="/admin">🛠️ Admin-Dashboard</a>
       <a class="btn hidden" id="switch-server" href="bissfest://setup">📱 Server wechseln</a>
-      <button class="btn danger" id="logout">Abmelden</button>
-      <p class="muted tiny">Nährwerte: Open Food Facts (ODbL) und USDA FoodData Central.</p>
-      <p class="muted tiny">Freie Software unter der <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">AGPL-3.0</a><span id="source-link" class="hidden"> · <a target="_blank" rel="noopener">Quellcode</a></span></p>
-      <p class="muted tiny" id="settings-version"></p>
-      <p class="muted tiny" data-copyright></p>
+      <p class="muted tiny center">Nährwerte: Open Food Facts (ODbL) und USDA FoodData Central.</p>
+      <p class="muted tiny center">Freie Software unter der <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">AGPL-3.0</a><span id="source-link" class="hidden"> · <a target="_blank" rel="noopener">Quellcode</a></span></p>
+      <p class="muted tiny center" id="settings-version"></p>
+      <p class="muted tiny center" data-copyright></p>
+    </div>
+  </main>
+
+  <main id="view-profile" class="view hidden">
+    <button type="button" class="back-link" id="profile-back">‹ Einstellungen</button>
+    <div class="card profile-head">
+      <div class="avatar large" data-avatar></div>
+      <div class="profile-head-text">
+        <span class="muted tiny">Angemeldet als</span>
+        <strong id="s-user"></strong>
+      </div>
+    </div>
+    <button type="button" class="card menu-item" id="open-avatar">
+      <span class="mi-icon">🖼️</span>
+      <span class="mi-text"><strong>Profilbild</strong><span class="muted tiny" id="avatar-summary"></span></span>
+      <span class="chev">›</span>
+    </button>
+    <form class="card form" id="email-form">
+      <h2>E-Mail-Adresse</h2>
+      <p class="muted tiny">Aktuell: <strong id="email-current"></strong>. Die neue Adresse gilt erst, wenn du den Link in der Mail an sie bestätigt hast.</p>
+      <input type="email" id="email-new" placeholder="Neue E-Mail-Adresse" autocomplete="email" autocapitalize="none" required>
+      <input type="password" id="email-pw" placeholder="Aktuelles Passwort" autocomplete="current-password" required>
+      <button class="btn">Bestätigungslink senden</button>
+      <p class="ok" id="email-msg"></p>
+    </form>
+    <form class="card form" id="pw-form">
+      <h2>Passwort ändern</h2>
+      <input type="password" id="pw-old" placeholder="Aktuelles Passwort" autocomplete="current-password" required>
+      <input type="password" id="pw-new" placeholder="Neues Passwort (min. 8)" autocomplete="new-password" minlength="8" required>
+      <button class="btn">Ändern</button>
+      <p class="ok" id="pw-msg"></p>
+    </form>
+    <a class="btn hidden" id="admin-link" href="/admin">🛠️ Admin-Dashboard</a>
+    <button class="btn danger" id="logout">Abmelden</button>
+  </main>
+
+  <main id="view-avatar" class="view hidden">
+    <button type="button" class="back-link" id="avatar-back">‹ Profil</button>
+    <div class="card avatar-page">
+      <div class="avatar xlarge" data-avatar></div>
+      <div class="avatar-actions">
+        <label class="btn hidden" for="avatar-camera" id="avatar-camera-btn">🤳 Selfie aufnehmen</label>
+        <input type="file" id="avatar-camera" accept="image/*" capture="user" class="visually-hidden">
+        <label class="btn" for="avatar-file" id="avatar-file-btn">🖼️ Bild wählen</label>
+        <input type="file" id="avatar-file" accept="image/*" class="visually-hidden">
+        <button type="button" class="btn danger hidden" id="avatar-remove">Profilbild löschen</button>
+      </div>
+      <p class="muted tiny center">Dein Profilbild siehst nur du. Es wird quadratisch zugeschnitten.</p>
+    </div>
+  </main>
+
+  <main id="view-goals" class="view hidden">
+    <button type="button" class="back-link" id="goals-back">‹ Einstellungen</button>
+    <form class="card form" id="settings-form">
+      <h2>Ziele</h2>
+      <label>Kalorienziel pro Tag (kcal)<input type="number" id="s-kcal" min="800" max="6000" required></label>
+      <label>Wasserziel pro Tag (ml)<input type="number" id="s-water" min="500" max="8000" step="50" required></label>
+      <label>Zielgewicht (kg, optional)<input type="number" id="s-target" min="30" max="400" step="0.1" inputmode="decimal"></label>
+      <h2>Mahlzeiten</h2>
+      <label>Mahlzeiten pro Tag
+        <select id="s-meals"><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select>
+      </label>
+      <p class="muted tiny">Bei 3 Mahlzeiten: Frühstück, Mittagessen, Abendessen – jede weitere ist ein Snack.
+        Die Uhrzeit ist deine Push-Erinnerung (leer = keine). Sie kommt nur, wenn für die Mahlzeit noch nichts eingetragen ist.</p>
+      <div id="s-meal-names"></div>
+      <button class="btn primary">Speichern</button>
+      <p class="ok" id="settings-msg"></p>
+    </form>
+  </main>
+
+  <main id="view-reminders" class="view hidden">
+    <button type="button" class="back-link" id="reminders-back">‹ Einstellungen</button>
+    <div class="card form" id="push-card">
+      <h2>🔔 Erinnerungen</h2>
+      <p class="muted tiny" id="push-status"></p>
+      <p class="muted tiny">Die Uhrzeiten stellst du unter Einstellungen → Ziele bei den Mahlzeiten ein.</p>
+      <button type="button" class="btn primary hidden" id="push-enable">Auf diesem Gerät aktivieren</button>
+      <button type="button" class="btn hidden" id="push-test">Test-Nachricht senden</button>
+      <button type="button" class="btn danger hidden" id="push-disable">Auf diesem Gerät deaktivieren</button>
+    </div>
+  </main>
+
+  <main id="view-extras" class="view hidden">
+    <button type="button" class="back-link" id="extras-back">‹ Einstellungen</button>
+    <div class="card form" id="extras-card">
+      <h2>✨ Extras</h2>
+      <label class="switch-row">
+        <span><strong>☕ Kaffee-Tracker</strong><br><span class="muted tiny">Tassen und Koffein pro Tag zählen</span></span>
+        <input type="checkbox" id="s-coffee" role="switch">
+      </label>
+      <div id="s-coffee-details" class="form">
+        <label>Koffein pro Tasse (150 ml, in mg)<input type="number" id="s-caffeine" inputmode="numeric" min="0" max="500" step="5"></label>
+        <p class="muted tiny">Richtwerte: Filterkaffee ≈ 90 mg, Cappuccino ≈ 75 mg, Espresso ≈ 65 mg, entkoffeiniert ≈ 3 mg.
+          Ein Pott (250 ml) zählt automatisch mit der entsprechend größeren Menge. Milch und Zucker bitte als
+          Lebensmittel eintragen – die Kaffee-Karte zählt keine Kalorien.</p>
+      </div>
+      <label class="switch-row">
+        <span><strong>🍵 Tee-Tracker</strong><br><span class="muted tiny">Tassen und Koffein pro Tag zählen</span></span>
+        <input type="checkbox" id="s-tea" role="switch">
+      </label>
+      <div id="s-tea-details" class="form">
+        <label>Koffein pro Tasse Tee (150 ml, in mg)<input type="number" id="s-tea-caffeine" inputmode="numeric" min="0" max="500" step="5"></label>
+        <p class="muted tiny">Richtwerte: Schwarztee ≈ 45 mg, Grüntee ≈ 30 mg, Mate ≈ 50 mg, Kräuter- und Früchtetee 0 mg.
+          Koffein aus Kaffee und Tee wird für den 400-mg-Hinweis zusammengezählt.</p>
+      </div>
+      <p class="ok" id="extras-msg"></p>
+    </div>
+    <div class="card form" id="ha-card">
+      <h2>🏠 Home Assistant</h2>
+      <p class="muted tiny">Verbinde Bissfest mit Home Assistant: Kalorien, Wasser, Gewicht, Kaffee &amp; Tee als Sensoren,
+        Knöpfe und Automationen. Erzeuge dafür einen Token und trage ihn zusammen mit der Adresse
+        <code id="ha-url"></code> in der Bissfest-Integration ein.</p>
+      <ul class="token-list" id="ha-tokens"></ul>
+      <div class="token-new hidden" id="ha-new-token">
+        <strong>Dein neuer Token – jetzt kopieren, er wird nur einmal angezeigt:</strong>
+        <code id="ha-token-value"></code>
+        <button type="button" class="btn small" id="ha-token-copy">📋 Kopieren</button>
+      </div>
+      <form class="search-row" id="ha-token-form">
+        <input id="ha-token-name" placeholder="Name, z. B. Home Assistant" maxlength="60" required>
+        <button class="btn primary">Token erzeugen</button>
+      </form>
+      <p class="err" id="ha-err"></p>
     </div>
   </main>
 

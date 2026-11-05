@@ -59,7 +59,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.7.0"
+APP_VERSION = "2.8.2"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -228,7 +228,9 @@ PROFILE_COLUMNS = {"sex": "TEXT", "birth_year": "INTEGER", "height_cm": "REAL", 
                    "coffee_enabled": "INTEGER NOT NULL DEFAULT 0", "caffeine_mg": "INTEGER NOT NULL DEFAULT 80",
                    "tea_enabled": "INTEGER NOT NULL DEFAULT 0", "tea_caffeine_mg": "INTEGER NOT NULL DEFAULT 40",
                    # 1 = Hinweis "Kalorienziel ist nur ein Beispielwert" bewusst ausgeblendet ("Mein Ziel passt so")
-                   "goal_hint_dismissed": "INTEGER NOT NULL DEFAULT 0"}
+                   "goal_hint_dismissed": "INTEGER NOT NULL DEFAULT 0",
+                   # Profilbild: 0 = keins, sonst Zeitstempel des Uploads (auch für den Browser-Cache)
+                   "avatar_version": "INTEGER NOT NULL DEFAULT 0"}
 # Später ergänzte Spalten für Einträge und Gericht-Zutaten: Zucker und die gewählte Portion ("2 × Scheibe")
 ENTRY_COLUMNS = {"sugar_100g": "REAL", "portion_name": "TEXT", "portion_count": "REAL"}
 # Kaffee-Größen in ml; das eingestellte Koffein (caffeine_mg) gilt für eine Tasse
@@ -384,6 +386,7 @@ def user_public(u: sqlite3.Row) -> dict:
         "push_devices": push_device_count(u["id"]),
         "is_admin": is_admin(u),
         "goal_hint_dismissed": bool(u["goal_hint_dismissed"]),
+        "avatar_version": u["avatar_version"],
         "coffee_enabled": bool(u["coffee_enabled"]),
         "caffeine_mg": u["caffeine_mg"],
         "tea_enabled": bool(u["tea_enabled"]),
@@ -806,6 +809,57 @@ def verify_email_change(request: Request, tasks: BackgroundTasks, token: str = "
         tasks.add_task(send_quietly, old["email"], "Bissfest: Deine E-Mail-Adresse wurde geändert",
                        f"Hallo,\n\n{text}\n", mail_html(base, ["Hallo,", text]))
     return RedirectResponse("/?email_changed=1", status_code=303)
+
+
+# ---------------------------------------------------------------- Profilbild
+# Der Browser schneidet das Bild quadratisch zu und verkleinert es; abrufbar nur für den Nutzer selbst.
+
+AVATAR_MAX_BYTES = 500 * 1024
+
+
+def avatar_path(user_id: int) -> Path:
+    return Path(DB_PATH).parent / "avatars" / f"{user_id}.jpg"
+
+
+class AvatarIn(BaseModel):
+    image: str = Field(max_length=800_000)  # data:image/jpeg;base64,…
+
+
+@app.put("/api/avatar")
+def save_avatar(a: AvatarIn, u=Depends(current_user)):
+    throttle(f"avatar:{u['id']}", limit=20, window=3600)
+    try:
+        raw = base64.b64decode(a.image.split(",", 1)[1], validate=True)
+    except Exception:
+        raise HTTPException(422, "Bild konnte nicht gelesen werden")
+    if len(raw) > AVATAR_MAX_BYTES:
+        raise HTTPException(422, "Bild ist zu groß")
+    if not raw.startswith(b"\xff\xd8\xff"):
+        raise HTTPException(422, "Bild muss ein JPEG sein")
+    path = avatar_path(u["id"])
+    path.parent.mkdir(exist_ok=True)
+    path.write_bytes(raw)
+    version = int(time.time())
+    with db() as conn:
+        conn.execute("UPDATE users SET avatar_version=? WHERE id=?", (version, u["id"]))
+    return {"avatar_version": version}
+
+
+@app.get("/api/avatar")
+def get_avatar(u=Depends(current_user)):
+    path = avatar_path(u["id"])
+    if not path.is_file():
+        raise HTTPException(404, "Kein Profilbild vorhanden")
+    return FileResponse(path, media_type="image/jpeg",
+                        headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"})
+
+
+@app.delete("/api/avatar")
+def delete_avatar(u=Depends(current_user)):
+    avatar_path(u["id"]).unlink(missing_ok=True)
+    with db() as conn:
+        conn.execute("UPDATE users SET avatar_version=0 WHERE id=?", (u["id"],))
+    return {"ok": True}
 
 
 class PasswordChange(BaseModel):
@@ -1696,6 +1750,7 @@ def admin_delete_user(user_id: int, a=Depends(admin_user)):
     u = _target_user(user_id)
     with db() as conn:
         conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    avatar_path(user_id).unlink(missing_ok=True)
     logging.getLogger("admin").info("Konto %s (#%s) gelöscht von %s", u["username"], user_id, a["username"])
     return {"ok": True}
 

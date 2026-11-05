@@ -4,7 +4,7 @@ Ab Bissfest 2.1.0. Gedacht für die Home-Assistant-Integration (`custom_componen
 mit jedem HTTP-Client.
 
 ## Anmeldung
-In Bissfest unter **Einstellungen → 🏠 Home Assistant** einen Token erzeugen. Er wird nur einmal angezeigt
+In Bissfest unter **Einstellungen → Extras → 🏠 Home Assistant** einen Token erzeugen. Er wird nur einmal angezeigt
 (Format `bf_…`), lässt sich dort jederzeit widerrufen und gilt nur für das eigene Konto.
 
 ```
