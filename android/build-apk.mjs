@@ -14,7 +14,7 @@ import {
   AndroidSdkTools, Config, ConsoleLog, GradleWrapper, JdkHelper, TwaGenerator, TwaManifest,
 } from "@bubblewrap/core";
 
-const VERSION_NAME = "2.5.0";
+const VERSION_NAME = "2.5.0"; // bei neuer APK auch ANDROID_APP_VERSION in app/main.py anpassen
 const VERSION_CODE = 20500; // muss bei jeder neuen APK steigen (2.5.1 -> 20501, 2.6.0 -> 20600 …)
 const PACKAGE_ID = "de.facgooder.bissfest";
 const WEB_MANIFEST = "https://bissfest.facgooder.de/static/manifest.json";

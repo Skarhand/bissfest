@@ -134,6 +134,7 @@ sie nach der Server-Adresse (HTTPS), prüft sie und öffnet Bissfest danach im V
 Jeder Server liefert dafür `/.well-known/assetlinks.json` mit Paketname und Zertifikat der offiziellen App aus
 (Standardwerte von `ANDROID_PACKAGE`/`ANDROID_CERT_SHA256`). In den Einstellungen sehen Android-Nutzer einen
 Download-Knopf; ohne eigene Datei zeigt er auf die offizielle APK. Web-Updates kommen automatisch in der App an.
+In der Android-App selbst steht unter Einstellungen → „App aktualisieren“ die neueste APK bereit. Wer eine eigene APK anbietet, setzt ihre Version in `ANDROID_APP_VERSION`.
 
 Eigene APK bauen (JDK 17, Android SDK mit `platforms;android-36` und `build-tools;36.1.0`):
 
@@ -218,6 +219,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.14.0** – Android-App: Update der APK direkt in den Einstellungen
 - **2.13.0** – Sport: mit über 20 Sportarten zusätzliche Kalorien verdienen; Koffein pro Espresso wird jetzt auch gespeichert
 - **2.12.0** – Espresso im Kaffee-Tracker mit eigenem Koffeinwert, auch über die API
 - **2.11.3** – „Server wechseln“ im Profil, Farbe wie die anderen Knöpfe

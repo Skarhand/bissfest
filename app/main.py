@@ -53,6 +53,8 @@ ANDROID_CERT_SHA256 = os.environ.get(
     "ANDROID_CERT_SHA256", "6E:84:21:EC:C2:27:3B:9C:4F:24:CD:2D:5F:2B:C9:B9:55:C7:96:4C:5E:3D:BA:91:1A:35:11:10:A8:13:27:3E")
 OFFICIAL_APK_URL = "https://bissfest.facgooder.de/download/bissfest.apk"
 APK_PATH = Path(DB_PATH).parent / "downloads" / "bissfest.apk"
+# Bei jeder neuen APK anpassen (VERSION_NAME in android/build-apk.mjs); wer eine eigene APK anbietet, setzt die Variable
+ANDROID_APP_VERSION = os.environ.get("ANDROID_APP_VERSION", "2.5.0")
 # Empfänger für Feature Requests aus der App
 FEEDBACK_TO = "service@facgooder.de"  # fest vorgegeben, siehe NOTICE.md
 # Quellcode-Link in den Einstellungen (AGPL-3.0 § 13: Pflicht beim Betrieb geänderter Fassungen)
@@ -62,7 +64,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.13.0"
+APP_VERSION = "2.14.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -466,7 +468,8 @@ def config():
             "version": APP_VERSION, "mail_enabled": mailer.configured(),
             "donate_wero": DONATE_WERO_URL, "source_url": SOURCE_URL,
             # eigene APK im Datenordner, sonst die offizielle (fragt beim ersten Start nach dem Server)
-            "android_apk_url": "/download/bissfest.apk" if APK_PATH.exists() else OFFICIAL_APK_URL}
+            "android_apk_url": "/download/bissfest.apk" if APK_PATH.exists() else OFFICIAL_APK_URL,
+            "android_apk_version": ANDROID_APP_VERSION}
 
 
 class RegisterIn(Credentials):

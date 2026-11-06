@@ -421,3 +421,5 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 #sport-card.hidden { display: none; }
 .sport-inputs { display: grid; grid-template-columns: minmax(0, 1fr) 84px; gap: 8px; }
 #sport-preview:empty { display: none; }
+#apk-update { display: block; color: var(--text); text-align: center; text-decoration: none; }
+#apk-update.primary { color: var(--on-accent); }

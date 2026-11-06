@@ -106,10 +106,11 @@ async function initAuth() {
   }
   // Android-App anbieten: nur im Android-Browser, nicht in der installierten App/PWA
   const standalone = matchMedia("(display-mode: standalone)").matches || document.referrer.startsWith("android-app://");
-  $("#android-card").classList.toggle("hidden", !(cfg.android_apk_url && /Android/i.test(navigator.userAgent) && !standalone));
+  $("#android-card").classList.toggle("hidden", !(cfg.android_apk_url && /Android/i.test(navigator.userAgent) && !standalone && appMode() !== "Android-App"));
   if (cfg.android_apk_url) $("#android-download").href = cfg.android_apk_url;
   $("#android-server").textContent = location.origin;
   $("#switch-server").classList.toggle("hidden", appMode() !== "Android-App");
+  initApkUpdate(cfg);
   // „Spendier mir einen Kaffee“ per Wero – Karte nur, wenn ein Link eingerichtet ist
   if (cfg.donate_wero) $("#donate-wero").href = cfg.donate_wero;
   $("#donate-card").classList.toggle("hidden", !cfg.donate_wero);
@@ -1947,6 +1948,34 @@ const FEEDBACK_KINDS = {
     thanks: "Danke! Wir schauen uns den Fehler an 🐞",
   },
 };
+
+// Die Web-App sieht nicht, welche APK installiert ist. Sie merkt sich deshalb die zuletzt hier geladene Version.
+const APK_VERSION_KEY = "apk-version";
+
+function storedApkVersion() {
+  try { return localStorage.getItem(APK_VERSION_KEY); } catch { return null; }
+}
+
+function renderApkUpdate(latest) {
+  const stored = storedApkVersion(), outdated = stored && stored !== latest;
+  $("#apk-update-status").textContent = !stored ? `Neueste Version der App: ${latest}.`
+    : outdated ? `Neue Version ${latest} verfügbar, zuletzt geladen: ${stored}.`
+      : `Du hast die neueste Version ${latest} geladen.`;
+  $("#apk-update").classList.toggle("primary", !stored || !!outdated);
+}
+
+function initApkUpdate(cfg) {
+  const available = cfg.android_apk_url && appMode() === "Android-App";
+  $("#apk-update-card").classList.toggle("hidden", !available);
+  if (!available) return;
+  $("#apk-update").href = cfg.android_apk_url;
+  renderApkUpdate(cfg.android_apk_version);
+  $("#apk-update").onclick = () => {
+    try { localStorage.setItem(APK_VERSION_KEY, cfg.android_apk_version); } catch {}
+    renderApkUpdate(cfg.android_apk_version);
+    toast("Download gestartet");
+  };
+}
 
 function appMode() {
   let twa = false;
