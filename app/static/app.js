@@ -254,6 +254,7 @@ function dayTitle(iso) {
 
 async function loadDay() {
   $("#day-label").textContent = dayTitle(state.day);
+  state.sports ||= await api("/sports").catch(() => null);
   state.data = await api("/day/" + state.day);
   renderDay();
   loadWeightDiff();
@@ -265,19 +266,21 @@ function renderDay() {
   $("#goal-hint").classList.toggle("hidden", !needsGoalSetup());
   $("#goal-hint-kcal").textContent = fmt(u.kcal_goal);
   const eaten = Math.round(d.totals.kcal);
-  const left = u.kcal_goal - eaten;
+  const sportKcal = d.sport.kcal;
+  const goal = u.kcal_goal + sportKcal;
+  const left = goal - eaten;
   $("#kcal-eaten").textContent = fmt(eaten);
   $("#kcal-goal").textContent = fmt(u.kcal_goal);
   $("#kcal-left").textContent = fmt(Math.abs(left));
   $("#kcal-left-label").textContent = left >= 0 ? "kcal übrig" : "kcal zu viel";
   const ring = $("#kcal-ring");
-  const frac = Math.min(eaten / u.kcal_goal, 1);
+  const frac = Math.min(eaten / goal, 1);
   ring.style.strokeDashoffset = 326.7 * (1 - frac);
   ring.classList.toggle("over", left < 0);
   const e = energy(u);
   $("#deficit-row").classList.toggle("hidden", !e);
   if (e) {
-    const def = Math.round(e.tdee - eaten);
+    const def = Math.round(e.tdee + sportKcal - eaten);
     $("#deficit-row .muted").textContent = def >= 0 ? "Defizit" : "Überschuss";
     $("#kcal-deficit").textContent = fmt(Math.abs(def));
     $("#kcal-deficit").className = def >= 0 ? "pos" : "neg";
@@ -287,6 +290,7 @@ function renderDay() {
   $("#water-text").textContent = `${fmt(d.water_ml / 1000, 2)} / ${fmt(u.water_goal_ml / 1000, 1)} l`;
   $("#water-bar").style.width = Math.min(100, (d.water_ml / u.water_goal_ml) * 100) + "%";
   renderDrinks();
+  renderSport();
 
   const wi = $("#weight-input");
   if (document.activeElement !== wi) wi.value = d.weight ?? "";
@@ -356,8 +360,7 @@ function initDay() {
       state.data.weight = kg;
       state.user = await api("/me");
       fillSettings();
-      renderDay();
-      loadWeightDiff();
+      await loadDay(); // auch die Sport-Vorschau rechnet mit dem neuen Gewicht
     } catch (err) { toast(err.message); }
   };
 }
@@ -1098,7 +1101,8 @@ async function loadHistory() {
   $("#kcal-chart").innerHTML = barChart(h.kcal, u.kcal_goal, days);
   if (h.kcal.length) {
     const avg = h.kcal.reduce((s, r) => s + r.kcal, 0) / h.kcal.length;
-    const under = h.kcal.filter((r) => r.kcal <= u.kcal_goal).length;
+    const sportByDay = Object.fromEntries(h.sport.map((r) => [r.day, r.kcal]));
+    const under = h.kcal.filter((r) => r.kcal <= u.kcal_goal + (sportByDay[r.day] || 0)).length;
     const wAvg = h.water.length ? h.water.reduce((s, r) => s + r.ml, 0) / h.water.length : 0;
     $("#kcal-stats").innerHTML =
       stat(fmt(avg), "Ø kcal/Tag") + stat(`${under}/${h.kcal.length}`, "Tage im Ziel") + stat(`${fmt(wAvg / 1000, 1)} l`, "Ø Wasser");
@@ -1226,11 +1230,12 @@ function fillSettings() {
   $("#goals-summary").textContent = `${fmt(u.kcal_goal)} kcal · ${fmt(u.water_goal_ml / 1000, 1)} l Wasser · ${u.meals_per_day} Mahlzeiten`;
   const times = Object.keys(u.reminders || {}).length;
   $("#reminders-summary").textContent = times ? `${times} ${times === 1 ? "Uhrzeit" : "Uhrzeiten"} eingestellt` : "Noch keine Uhrzeiten eingestellt";
-  $("#extras-summary").textContent = ["Kaffee", "Tee"].filter((_, i) => [u.coffee_enabled, u.tea_enabled][i]).concat("Home Assistant").join(" · ");
+  $("#extras-summary").textContent = ["Sport", "Kaffee", "Tee"].filter((_, i) => [u.sport_enabled, u.coffee_enabled, u.tea_enabled][i]).concat("Home Assistant").join(" · ");
   $("#admin-link").classList.toggle("hidden", !u.is_admin);
   $("#s-kcal").value = u.kcal_goal;
   $("#s-water").value = u.water_goal_ml;
   $("#s-target").value = u.target_weight ?? "";
+  $("#s-sport").checked = u.sport_enabled;
   $("#s-coffee").checked = u.coffee_enabled;
   $("#s-caffeine").value = u.caffeine_mg;
   $("#s-espresso").value = u.espresso_caffeine_mg;
@@ -1300,6 +1305,7 @@ async function saveSettings(msgSel) {
         target_weight: t === "" ? null : parseFloat(t),
         ...profileFromForm(),
         reminders: Object.fromEntries($$("[data-meal-time]").map((inp, i) => [String(i), inp.value]).filter(([, t]) => t)),
+        sport_enabled: $("#s-sport").checked,
         coffee_enabled: $("#s-coffee").checked,
         caffeine_mg: Math.round(+$("#s-caffeine").value) || 80,
         espresso_caffeine_mg: $("#s-espresso").value === "" ? 65 : Math.round(+$("#s-espresso").value),
@@ -1323,8 +1329,11 @@ function initSettings() {
     };
   });
   $("#s-caffeine").onchange = () => saveSettings("#extras-msg");
+  $("#s-espresso").onchange = () => saveSettings("#extras-msg");
+  $("#s-sport").onchange = () => saveSettings("#extras-msg");
   $("#s-tea-caffeine").onchange = () => saveSettings("#extras-msg");
   initDrinks();
+  initSport();
   ["#s-sex", "#s-birth", "#s-height", "#s-activity", "#s-pace", "#s-kcal"].forEach((id) => ($(id).oninput = renderCalc));
   $("#s-meals").onchange = () => {
     const times = $$("[data-meal-time]").map((i) => i.value);
@@ -1624,6 +1633,69 @@ function initOnboarding() {
     } finally {
       $("#onb-save").disabled = false;
     }
+  };
+}
+
+/* ------------------------------------------------------------ Sport */
+
+function fillSportTypes() {
+  const select = $("#sport-type");
+  if (select.options.length || !state.sports) return;
+  select.innerHTML = state.sports.map((s) => `<option value="${esc(s.key)}">${esc(s.icon)} ${esc(s.name)}</option>`).join("")
+    + `<option value="custom">✏️ Eigene Sportart</option>`;
+}
+
+function updateSportPreview() {
+  const type = $("#sport-type").value, minutes = +$("#sport-minutes").value, kg = state.data?.sport.weight_kg;
+  const custom = type === "custom", sport = state.sports?.find((s) => s.key === type);
+  $("#sport-custom").classList.toggle("hidden", !custom);
+  $("#sport-name").required = $("#sport-kcal").required = custom;
+  if (custom) return ($("#sport-preview").textContent = "Zum Beispiel den Wert deiner Sportuhr eintragen.");
+  if (!kg) return ($("#sport-preview").textContent = "Trag zuerst dein Gewicht ein, damit Bissfest die Kalorien berechnen kann.");
+  $("#sport-preview").textContent = sport && minutes > 0
+    ? `≈ ${fmt((sport.met - 1) * kg * minutes / 60)} kcal verdient, gerechnet mit ${fmt(kg, 1)} kg` : "";
+}
+
+function renderSport() {
+  const s = state.data.sport, on = state.user.sport_enabled;
+  $("#sport-card").classList.toggle("hidden", !on);
+  $("#sport-row").classList.toggle("hidden", !s.kcal);
+  $("#kcal-sport").textContent = `+${fmt(s.kcal)}`;
+  if (!on) return;
+  fillSportTypes();
+  $("#sport-total").textContent = s.kcal ? `+${fmt(s.kcal)} kcal` : "";
+  $("#sport-list").innerHTML = s.entries.map((e) => `<li><span class="edit-name">${esc(e.name)} · ${fmt(e.minutes)} Min. · ${fmt(e.kcal)} kcal</span>
+    <button type="button" class="edit-remove" data-sport="${e.id}" aria-label="Eintrag löschen">✕</button></li>`).join("");
+  updateSportPreview();
+}
+
+function initSport() {
+  $("#sport-type").onchange = updateSportPreview;
+  $("#sport-minutes").oninput = updateSportPreview;
+  const apply = async (request) => {
+    try {
+      await request;
+      await loadDay();
+      return true;
+    } catch (err) { toast(err.message); return false; }
+  };
+  $("#sport-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const custom = $("#sport-type").value === "custom";
+    const saved = await apply(api("/sport", {
+      method: "POST",
+      body: {
+        day: state.day, sport: $("#sport-type").value, minutes: +$("#sport-minutes").value,
+        name: custom ? $("#sport-name").value.trim() : null, kcal: custom ? +$("#sport-kcal").value : null,
+      },
+    }));
+    if (!saved) return;
+    $("#sport-minutes").value = $("#sport-name").value = $("#sport-kcal").value = "";
+    updateSportPreview();
+  };
+  $("#sport-list").onclick = (e) => {
+    const id = e.target.closest("[data-sport]")?.dataset.sport;
+    if (id) apply(api("/sport/" + id, { method: "DELETE" }));
   };
 }
 

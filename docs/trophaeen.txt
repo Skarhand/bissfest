@@ -3,7 +3,7 @@ Bissfest – alle 111 Trophäen
 
 Einmal verdient, bleibt eine Trophäe erhalten. Geheime Trophäen zeigt die App erst, wenn sie verdient sind.
 Kaffee- und Tee-Trophäen erscheinen nur, wenn der jeweilige Tracker eingeschaltet ist.
-Ein Tag zählt als „nah am Kalorienziel“ bei 85% bis 105% des Ziels. Der laufende Tag zählt dafür noch nicht.
+Ein Tag zählt als „nah am Kalorienziel“ bei 85% bis 105% des Ziels, inklusive Sport-Kalorien. Der laufende Tag zählt dafür noch nicht.
 
 Dranbleiben (11)
 ---------------

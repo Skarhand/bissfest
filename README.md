@@ -89,6 +89,12 @@ Hersteller, Marke, Barcode, Nährwerten pro 100 g und pro Portion sowie der Port
 Vor der Übernahme zeigt Bissfest eine Vorschau mit Fehlern. Vorhandene Lebensmittel werden nie überschrieben, fehlende Portionen aber ergänzt.
 Bei TL und EL ohne Gewicht nutzt Bissfest für bekannte Lebensmittel Richtwerte für gestrichene Löffel.
 
+## Sport
+
+Auf dem Tagesbildschirm trägst du Sportart und Minuten ein, die verdienten Kalorien kommen zum Tagesziel dazu. Gerechnet wird
+`(MET − 1) × Gewicht × Stunden` mit dem zuletzt eingetragenen Gewicht, der Ruheumsatz zählt also nicht doppelt. Für alles andere
+gibt es eine eigene Sportart mit frei eingetragenen Kalorien. Die Sektion lässt sich unter **Einstellungen → Extras** abschalten.
+
 ## Trophäen
 
 Unter **Einstellungen → Trophäen** sammelt jeder Nutzer Auszeichnungen, die Liste steht in [docs/trophaeen.txt](docs/trophaeen.txt).
@@ -212,6 +218,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.13.0** – Sport: mit über 20 Sportarten zusätzliche Kalorien verdienen; Koffein pro Espresso wird jetzt auch gespeichert
 - **2.12.0** – Espresso im Kaffee-Tracker mit eigenem Koffeinwert, auch über die API
 - **2.11.3** – „Server wechseln“ im Profil, Farbe wie die anderen Knöpfe
 - **2.11.2** – Portionen ändern und löschen nur noch Ersteller und Admin, eigene Portionen direkt beim Lebensmittel

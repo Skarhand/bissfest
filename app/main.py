@@ -26,6 +26,7 @@ import backup
 import food_import
 import mailer
 import push
+import sports
 import trophies
 
 DB_PATH = os.environ.get("DB_PATH", "/data/abnehm.db")
@@ -61,7 +62,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.12.0"
+APP_VERSION = "2.13.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -211,6 +212,17 @@ CREATE TABLE IF NOT EXISTS api_tokens (
     created INTEGER NOT NULL,
     last_used INTEGER
 );
+CREATE TABLE IF NOT EXISTS sport_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    day TEXT NOT NULL,
+    sport TEXT NOT NULL,
+    name TEXT NOT NULL,
+    minutes INTEGER NOT NULL,
+    kcal INTEGER NOT NULL,
+    created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sport_user_day ON sport_entries(user_id, day);
 CREATE TABLE IF NOT EXISTS user_trophies (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     key TEXT NOT NULL,
@@ -236,6 +248,7 @@ PROFILE_COLUMNS = {"sex": "TEXT", "birth_year": "INTEGER", "height_cm": "REAL", 
                    "coffee_enabled": "INTEGER NOT NULL DEFAULT 0", "caffeine_mg": "INTEGER NOT NULL DEFAULT 80",
                    "tea_enabled": "INTEGER NOT NULL DEFAULT 0", "tea_caffeine_mg": "INTEGER NOT NULL DEFAULT 40",
                    "espresso_caffeine_mg": "INTEGER NOT NULL DEFAULT 65",
+                   "sport_enabled": "INTEGER NOT NULL DEFAULT 1",
                    # 1 = Hinweis "Kalorienziel ist nur ein Beispielwert" bewusst ausgeblendet ("Mein Ziel passt so")
                    "goal_hint_dismissed": "INTEGER NOT NULL DEFAULT 0",
                    # Profilbild: 0 = keins, sonst Zeitstempel des Uploads (auch für den Browser-Cache)
@@ -398,6 +411,7 @@ def user_public(u: sqlite3.Row) -> dict:
         "avatar_version": u["avatar_version"],
         "coffee_enabled": bool(u["coffee_enabled"]),
         "espresso_caffeine_mg": u["espresso_caffeine_mg"],
+        "sport_enabled": bool(u["sport_enabled"]),
         "caffeine_mg": u["caffeine_mg"],
         "tea_enabled": bool(u["tea_enabled"]),
         "tea_caffeine_mg": u["tea_caffeine_mg"],
@@ -639,6 +653,7 @@ class Settings(BaseModel):
     tea_enabled: bool | None = None
     tea_caffeine_mg: int | None = Field(default=None, ge=0, le=500)
     espresso_caffeine_mg: int | None = Field(default=None, ge=0, le=500)
+    sport_enabled: bool | None = None
 
 
 @app.put("/api/settings")
@@ -661,11 +676,12 @@ def save_settings(s: Settings, u=Depends(current_user)):
             "sex=?, birth_year=?, height_cm=?, activity=?, weekly_loss=?, "
             "coffee_enabled=COALESCE(?, coffee_enabled), caffeine_mg=COALESCE(?, caffeine_mg), "
             "tea_enabled=COALESCE(?, tea_enabled), tea_caffeine_mg=COALESCE(?, tea_caffeine_mg), "
-            "espresso_caffeine_mg=COALESCE(?, espresso_caffeine_mg) WHERE id=?",
+            "espresso_caffeine_mg=COALESCE(?, espresso_caffeine_mg), sport_enabled=COALESCE(?, sport_enabled) WHERE id=?",
             (s.meals_per_day, s.kcal_goal, s.water_goal_ml, s.target_weight,
              s.sex, s.birth_year, s.height_cm, s.activity, s.weekly_loss,
              None if s.coffee_enabled is None else int(s.coffee_enabled), s.caffeine_mg,
-             None if s.tea_enabled is None else int(s.tea_enabled), s.tea_caffeine_mg, s.espresso_caffeine_mg, u["id"]),
+             None if s.tea_enabled is None else int(s.tea_enabled), s.tea_caffeine_mg, s.espresso_caffeine_mg,
+             None if s.sport_enabled is None else int(s.sport_enabled), u["id"]),
         )
         u = conn.execute("SELECT * FROM users WHERE id=?", (u["id"],)).fetchone()
     return user_public(u)
@@ -926,9 +942,10 @@ def get_day(day: str, u=Depends(current_user)):
             (u["id"], day)).fetchone()
         w = conn.execute("SELECT kg FROM weights WHERE user_id=? AND day=?", (u["id"], day)).fetchone()
         coffee, tea = drink_day(conn, u["id"], day, "coffee"), drink_day(conn, u["id"], day, "tea")
+        sport = sport_day(conn, u, day)
     totals = {k: round(sum((f[k] or 0) for f in foods), 1) for k in ("kcal", *NUTRIENTS)}
     return {"day": day, "foods": foods, "water_ml": water["ml"], "water_count": water["n"],
-            "weight": w["kg"] if w else None, "coffee": coffee, "tea": tea, "totals": totals}
+            "weight": w["kg"] if w else None, "coffee": coffee, "tea": tea, "sport": sport, "totals": totals}
 
 
 class FoodIn(BaseModel):
@@ -1025,6 +1042,64 @@ def add_water(wi: WaterIn, u=Depends(current_user)):
     return {"water_ml": total}
 
 
+def weight_on_day(conn: sqlite3.Connection, user_id: int, day: str) -> float | None:
+    r = conn.execute("SELECT kg FROM weights WHERE user_id=? AND day<=? ORDER BY day DESC LIMIT 1", (user_id, day)).fetchone()
+    return r["kg"] if r else None
+
+
+def sport_day(conn: sqlite3.Connection, u: sqlite3.Row, day: str) -> dict:
+    entries = [dict(r) for r in conn.execute(
+        "SELECT id, sport, name, minutes, kcal FROM sport_entries WHERE user_id=? AND day=? ORDER BY created, id", (u["id"], day))]
+    # Ist die Sport-Sektion aus, bleiben die Einträge erhalten, zählen aber nicht zum Tagesziel
+    return {"entries": entries, "kcal": sum(e["kcal"] for e in entries) if u["sport_enabled"] else 0,
+            "weight_kg": weight_on_day(conn, u["id"], day)}
+
+
+@app.get("/api/sports")
+def list_sports(u=Depends(current_user)):
+    return [{"key": key, "icon": icon, "name": name, "met": met} for key, icon, name, met in sports.SPORTS]
+
+
+class SportIn(BaseModel):
+    day: str
+    sport: str = Field(max_length=30)
+    minutes: int = Field(ge=1, le=600)
+    name: str | None = Field(default=None, max_length=60)  # nur bei eigener Sportart
+    kcal: int | None = Field(default=None, ge=1, le=3000)  # nur bei eigener Sportart, z. B. von der Sportuhr
+
+
+@app.post("/api/sport")
+def add_sport(s: SportIn, u=Depends(current_user)):
+    day = check_day(s.day)
+    with db() as conn:
+        if s.sport == sports.CUSTOM:
+            name = (s.name or "").strip()
+            if not name or not s.kcal:
+                raise HTTPException(400, "Bitte Sportart und Kalorien eingeben")
+            kcal = s.kcal
+        elif s.sport in sports.BY_KEY:
+            _, name, met = sports.BY_KEY[s.sport]
+            kg = weight_on_day(conn, u["id"], day)
+            if not kg:
+                raise HTTPException(400, "Trag zuerst dein Gewicht ein, damit Bissfest die Kalorien berechnen kann")
+            kcal = sports.earned_kcal(met, kg, s.minutes)
+        else:
+            raise HTTPException(400, "Unbekannte Sportart")
+        conn.execute("INSERT INTO sport_entries (user_id, day, sport, name, minutes, kcal, created) VALUES (?,?,?,?,?,?,?)",
+                     (u["id"], day, s.sport, name, s.minutes, kcal, int(time.time())))
+        return sport_day(conn, u, day)
+
+
+@app.delete("/api/sport/{entry_id}")
+def delete_sport(entry_id: int, u=Depends(current_user)):
+    with db() as conn:
+        row = conn.execute("SELECT day FROM sport_entries WHERE id=? AND user_id=?", (entry_id, u["id"])).fetchone()
+        if not row:
+            raise HTTPException(404, "Eintrag nicht gefunden")
+        conn.execute("DELETE FROM sport_entries WHERE id=?", (entry_id,))
+        return sport_day(conn, u, row["day"])
+
+
 DrinkKind = Literal["coffee", "tea"]
 
 
@@ -1109,8 +1184,10 @@ def history(days: int = 30, u=Depends(current_user)):
             "SELECT day, SUM(ml) AS ml, SUM(ml = ?) AS espressos FROM coffee_entries "
             "WHERE user_id=? AND day>=? AND kind=? GROUP BY day ORDER BY day",
             (COFFEE_SIZES["espresso"], u["id"], start, kind))] for kind in ("coffee", "tea")}
+        sport = conn.execute("SELECT day, SUM(kcal) AS kcal FROM sport_entries WHERE user_id=? AND day>=? GROUP BY day",
+                             (u["id"], start)).fetchall() if u["sport_enabled"] else []
     return {"weights": [dict(r) for r in weights], "kcal": [dict(r) for r in kcal], "water": [dict(r) for r in water],
-            **drinks}
+            "sport": [dict(r) for r in sport], **drinks}
 
 
 # ---------------------------------------------------------------- Lebensmittel-Datenbanken
@@ -1742,7 +1819,10 @@ def build_status(u: sqlite3.Row, day: str) -> dict:
     if first30 and latest and first30["day"] == latest["day"]:
         first30 = None  # nur eine Wägung im Zeitraum – keine Veränderung berechenbar
     eaten = round(d["totals"]["kcal"])
+    sport_kcal = d["sport"]["kcal"]
     burned = energy_estimate(u, latest["kg"] if latest else None)
+    if burned is not None:
+        burned += sport_kcal
     reminders = json.loads(u["reminders"] or "{}")
     meals = [{"index": i, "name": name,
               "kcal": round(sum(f["kcal"] for f in d["foods"] if f["meal"] == i)),
@@ -1756,7 +1836,7 @@ def build_status(u: sqlite3.Row, day: str) -> dict:
                         "caffeine_mg": round(drink_caffeine(c, mg, u["espresso_caffeine_mg"]))}
     return {
         "app_version": APP_VERSION, "user": u["username"], "date": day,
-        "calories": {"eaten": eaten, "goal": u["kcal_goal"], "remaining": u["kcal_goal"] - eaten,
+        "calories": {"eaten": eaten, "goal": u["kcal_goal"], "sport": sport_kcal, "remaining": u["kcal_goal"] + sport_kcal - eaten,
                      "burned_estimate": burned, "deficit": burned - eaten if burned is not None else None},
         "nutrients": {k: d["totals"][k] for k in ("protein", "carbs", "sugar", "fat")},
         "meals": meals,

@@ -215,7 +215,11 @@ def collect_stats(conn: sqlite3.Connection, u: sqlite3.Row, today: date) -> dict
         (uid, today_iso)).fetchall()
     food_days = {date.fromisoformat(r["day"]): r for r in food}
     done = {d: r for d, r in food_days.items() if d < today}  # der heutige Tag läuft noch
-    goal_days = {d for d, r in done.items() if GOAL_MIN * goal <= r["kcal"] <= GOAL_MAX * goal}
+    # Mit Sport verdiente Kalorien erhöhen das Tagesziel
+    sport = {date.fromisoformat(r["day"]): r["kcal"] for r in conn.execute(
+        "SELECT day, SUM(kcal) AS kcal FROM sport_entries WHERE user_id=? GROUP BY day", (uid,))} if u["sport_enabled"] else {}
+    day_goal = lambda d: goal + sport.get(d, 0)  # noqa: E731
+    goal_days = {d for d, r in done.items() if GOAL_MIN * day_goal(d) <= r["kcal"] <= GOAL_MAX * day_goal(d)}
     all_meals = {d for d, r in food_days.items() if r["meals"] >= meals_goal}
 
     water = {date.fromisoformat(r["day"]): r["ml"] for r in conn.execute(
@@ -239,7 +243,7 @@ def collect_stats(conn: sqlite3.Connection, u: sqlite3.Row, today: date) -> dict
 
     ordered = sorted(food_days)
     gaps = sum(1 for a, b in zip(ordered, ordered[1:]) if (b - a).days >= COMEBACK_GAP_DAYS)
-    bounce = sum(1 for d, r in done.items() if r["kcal"] > OVER_GOAL * goal and d + timedelta(days=1) in goal_days)
+    bounce = sum(1 for d, r in done.items() if r["kcal"] > OVER_GOAL * day_goal(d) and d + timedelta(days=1) in goal_days)
     weekends = sum(1 for d in food_days if d.weekday() == 5 and d + timedelta(days=1) in food_days)
     hours = conn.execute(
         """SELECT SUM(h BETWEEN 4 AND 6) AS early, SUM(h >= 23 OR h < 4) AS late FROM (
@@ -321,7 +325,7 @@ def catalog_text() -> str:
     lines = [f"Bissfest – alle {len(CATALOG)} Trophäen", "=" * 40, ""]
     lines += ["Einmal verdient, bleibt eine Trophäe erhalten. Geheime Trophäen zeigt die App erst, wenn sie verdient sind.",
               "Kaffee- und Tee-Trophäen erscheinen nur, wenn der jeweilige Tracker eingeschaltet ist.",
-              f"Ein Tag zählt als „nah am Kalorienziel“ bei {GOAL_MIN:.0%} bis {GOAL_MAX:.0%} des Ziels. Der laufende Tag zählt dafür noch nicht.", ""]
+              f"Ein Tag zählt als „nah am Kalorienziel“ bei {GOAL_MIN:.0%} bis {GOAL_MAX:.0%} des Ziels, inklusive Sport-Kalorien. Der laufende Tag zählt dafür noch nicht.", ""]
     for category in CATEGORIES:
         trophies = [t for t in CATALOG if t.category == category]
         lines += [f"{category} ({len(trophies)})", "-" * (len(category) + 4)]

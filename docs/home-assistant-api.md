@@ -26,7 +26,7 @@ Fehler kommen als JSON `{"detail": "…"}`:
 ```json
 {
   "app_version": "2.1.0", "user": "sebastian", "date": "2026-11-04",
-  "calories": {"eaten": 1320, "goal": 1930, "remaining": 610, "burned_estimate": 2405, "deficit": 1085},
+  "calories": {"eaten": 1320, "goal": 1930, "sport": 200, "remaining": 810, "burned_estimate": 2605, "deficit": 1285},
   "nutrients": {"protein": 76.0, "carbs": 87.0, "sugar": 30.0, "fat": 69.0},
   "meals": [{"index": 0, "name": "Frühstück", "kcal": 456, "entries": 5, "reminder": "09:10"}],
   "water": {"ml": 1500, "goal_ml": 2000, "percent": 75},
@@ -38,6 +38,7 @@ Fehler kommen als JSON `{"detail": "…"}`:
 ```
 
 - `burned_estimate` (Gesamtumsatz) und `deficit` sind `null`, solange die Körperdaten fehlen.
+- `sport` sind die mit Sport verdienten Kalorien (ab Bissfest 2.13.0). Sie stecken schon in `remaining`, `burned_estimate` und `deficit`.
 - Alle `weight`-Werte, `target_kg`, `change_30d_kg` und `reminder` können `null` sein.
 - `meals` hat 3–7 Einträge (Frühstück, Mittagessen, Abendessen, Snack 1–4).
 - `coffee`/`tea`.`enabled` zeigt, ob der Nutzer das Extra eingeschaltet hat.
