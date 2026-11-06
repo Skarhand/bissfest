@@ -61,7 +61,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.11.3"
+APP_VERSION = "2.12.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -235,6 +235,7 @@ PROFILE_COLUMNS = {"sex": "TEXT", "birth_year": "INTEGER", "height_cm": "REAL", 
                    # Kaffee-Tracker (Extra, standardmäßig aus) und Koffein pro Tasse
                    "coffee_enabled": "INTEGER NOT NULL DEFAULT 0", "caffeine_mg": "INTEGER NOT NULL DEFAULT 80",
                    "tea_enabled": "INTEGER NOT NULL DEFAULT 0", "tea_caffeine_mg": "INTEGER NOT NULL DEFAULT 40",
+                   "espresso_caffeine_mg": "INTEGER NOT NULL DEFAULT 65",
                    # 1 = Hinweis "Kalorienziel ist nur ein Beispielwert" bewusst ausgeblendet ("Mein Ziel passt so")
                    "goal_hint_dismissed": "INTEGER NOT NULL DEFAULT 0",
                    # Profilbild: 0 = keins, sonst Zeitstempel des Uploads (auch für den Browser-Cache)
@@ -242,7 +243,7 @@ PROFILE_COLUMNS = {"sex": "TEXT", "birth_year": "INTEGER", "height_cm": "REAL", 
 # Später ergänzte Spalten für Einträge und Gericht-Zutaten: Zucker und die gewählte Portion ("2 × Scheibe")
 ENTRY_COLUMNS = {"sugar_100g": "REAL", "portion_name": "TEXT", "portion_count": "REAL"}
 # Kaffee-Größen in ml; das eingestellte Koffein (caffeine_mg) gilt für eine Tasse
-COFFEE_SIZES = {"cup": 150, "mug": 250}
+COFFEE_SIZES = {"cup": 150, "mug": 250, "espresso": 30}
 ACTIVITY_FACTORS = (1.2, 1.375, 1.55, 1.725, 1.9)
 
 
@@ -396,6 +397,7 @@ def user_public(u: sqlite3.Row) -> dict:
         "goal_hint_dismissed": bool(u["goal_hint_dismissed"]),
         "avatar_version": u["avatar_version"],
         "coffee_enabled": bool(u["coffee_enabled"]),
+        "espresso_caffeine_mg": u["espresso_caffeine_mg"],
         "caffeine_mg": u["caffeine_mg"],
         "tea_enabled": bool(u["tea_enabled"]),
         "tea_caffeine_mg": u["tea_caffeine_mg"],
@@ -636,6 +638,7 @@ class Settings(BaseModel):
     caffeine_mg: int | None = Field(default=None, ge=0, le=500)
     tea_enabled: bool | None = None
     tea_caffeine_mg: int | None = Field(default=None, ge=0, le=500)
+    espresso_caffeine_mg: int | None = Field(default=None, ge=0, le=500)
 
 
 @app.put("/api/settings")
@@ -657,11 +660,12 @@ def save_settings(s: Settings, u=Depends(current_user)):
             "UPDATE users SET meals_per_day=?, kcal_goal=?, water_goal_ml=?, target_weight=?, "
             "sex=?, birth_year=?, height_cm=?, activity=?, weekly_loss=?, "
             "coffee_enabled=COALESCE(?, coffee_enabled), caffeine_mg=COALESCE(?, caffeine_mg), "
-            "tea_enabled=COALESCE(?, tea_enabled), tea_caffeine_mg=COALESCE(?, tea_caffeine_mg) WHERE id=?",
+            "tea_enabled=COALESCE(?, tea_enabled), tea_caffeine_mg=COALESCE(?, tea_caffeine_mg), "
+            "espresso_caffeine_mg=COALESCE(?, espresso_caffeine_mg) WHERE id=?",
             (s.meals_per_day, s.kcal_goal, s.water_goal_ml, s.target_weight,
              s.sex, s.birth_year, s.height_cm, s.activity, s.weekly_loss,
              None if s.coffee_enabled is None else int(s.coffee_enabled), s.caffeine_mg,
-             None if s.tea_enabled is None else int(s.tea_enabled), s.tea_caffeine_mg, u["id"]),
+             None if s.tea_enabled is None else int(s.tea_enabled), s.tea_caffeine_mg, s.espresso_caffeine_mg, u["id"]),
         )
         u = conn.execute("SELECT * FROM users WHERE id=?", (u["id"],)).fetchone()
     return user_public(u)
@@ -1026,22 +1030,30 @@ DrinkKind = Literal["coffee", "tea"]
 
 def drink_day(conn: sqlite3.Connection, user_id: int, day: str, kind: str) -> dict:
     r = conn.execute(
-        "SELECT COALESCE(SUM(ml = ?), 0) AS cups, COALESCE(SUM(ml = ?), 0) AS mugs, COALESCE(SUM(ml), 0) AS ml "
-        "FROM coffee_entries WHERE user_id=? AND day=? AND kind=?",
-        (COFFEE_SIZES["cup"], COFFEE_SIZES["mug"], user_id, day, kind)).fetchone()
+        "SELECT COALESCE(SUM(ml = ?), 0) AS cups, COALESCE(SUM(ml = ?), 0) AS mugs, COALESCE(SUM(ml = ?), 0) AS espressos, "
+        "COALESCE(SUM(ml), 0) AS ml FROM coffee_entries WHERE user_id=? AND day=? AND kind=?",
+        (COFFEE_SIZES["cup"], COFFEE_SIZES["mug"], COFFEE_SIZES["espresso"], user_id, day, kind)).fetchone()
     return dict(r)
+
+
+def drink_caffeine(c: dict, cup_mg: int, espresso_mg: int) -> float:
+    """Espresso ist viel konzentrierter als Filterkaffee und zählt deshalb pro Stück, nicht nach Menge."""
+    filter_ml = c["ml"] - c["espressos"] * COFFEE_SIZES["espresso"]
+    return filter_ml / COFFEE_SIZES["cup"] * cup_mg + c["espressos"] * espresso_mg
 
 
 class DrinkIn(BaseModel):
     day: str
-    size: Literal["cup", "mug"] = "cup"
+    size: Literal["cup", "mug", "espresso"] = "cup"
     kind: DrinkKind = "coffee"
 
 
 @app.post("/api/coffee")
 def add_drink(c: DrinkIn, u=Depends(current_user)):
-    """Tasse (150 ml) oder Pott (250 ml) Kaffee bzw. Tee eintragen."""
+    """Tasse (150 ml) oder Pott (250 ml) Kaffee bzw. Tee eintragen, beim Kaffee auch Espresso (30 ml)."""
     day = check_day(c.day)
+    if c.size == "espresso" and c.kind != "coffee":
+        raise HTTPException(400, "Espresso gibt es nur beim Kaffee")
     with db() as conn:
         conn.execute("INSERT INTO coffee_entries (user_id, day, ml, kind, created) VALUES (?,?,?,?,?)",
                      (u["id"], day, COFFEE_SIZES[c.size], c.kind, int(time.time())))
@@ -1094,8 +1106,9 @@ def history(days: int = 30, u=Depends(current_user)):
         water = conn.execute("SELECT day, SUM(ml) AS ml FROM water_entries WHERE user_id=? AND day>=? "
                              "GROUP BY day ORDER BY day", (u["id"], start)).fetchall()
         drinks = {kind: [dict(r) for r in conn.execute(
-            "SELECT day, SUM(ml) AS ml FROM coffee_entries WHERE user_id=? AND day>=? AND kind=? GROUP BY day ORDER BY day",
-            (u["id"], start, kind))] for kind in ("coffee", "tea")}
+            "SELECT day, SUM(ml) AS ml, SUM(ml = ?) AS espressos FROM coffee_entries "
+            "WHERE user_id=? AND day>=? AND kind=? GROUP BY day ORDER BY day",
+            (COFFEE_SIZES["espresso"], u["id"], start, kind))] for kind in ("coffee", "tea")}
     return {"weights": [dict(r) for r in weights], "kcal": [dict(r) for r in kcal], "water": [dict(r) for r in water],
             **drinks}
 
@@ -1739,8 +1752,8 @@ def build_status(u: sqlite3.Row, day: str) -> dict:
     drinks = {}
     for kind, enabled, mg in (("coffee", u["coffee_enabled"], u["caffeine_mg"]), ("tea", u["tea_enabled"], u["tea_caffeine_mg"])):
         c = d[kind]
-        drinks[kind] = {"enabled": bool(enabled), "cups": c["cups"], "mugs": c["mugs"], "ml": c["ml"],
-                        "caffeine_mg": round(c["ml"] / COFFEE_SIZES["cup"] * mg)}
+        drinks[kind] = {"enabled": bool(enabled), "cups": c["cups"], "mugs": c["mugs"], "espressos": c["espressos"], "ml": c["ml"],
+                        "caffeine_mg": round(drink_caffeine(c, mg, u["espresso_caffeine_mg"]))}
     return {
         "app_version": APP_VERSION, "user": u["username"], "date": day,
         "calories": {"eaten": eaten, "goal": u["kcal_goal"], "remaining": u["kcal_goal"] - eaten,
@@ -1787,7 +1800,7 @@ def api_weight(w: ApiWeightIn, u=Depends(token_user)):
 
 class ApiDrinkIn(BaseModel):
     kind: DrinkKind
-    size: Literal["cup", "mug"] = "cup"
+    size: Literal["cup", "mug", "espresso"] = "cup"
 
 
 @app.post("/api/v1/drink")

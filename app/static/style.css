@@ -413,3 +413,5 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .edit-save { flex: none; width: 36px; height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
 .portion-new { min-width: 0; }
 .edit-list { grid-template-columns: minmax(0, 1fr); }
+.cup-icons .espresso { font-size: .7em; }
+#drink-coffee .coffee-row .btn.primary { padding-inline: 4px; font-size: .85rem; white-space: nowrap; }

@@ -212,6 +212,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.12.0** – Espresso im Kaffee-Tracker mit eigenem Koffeinwert, auch über die API
 - **2.11.3** – „Server wechseln“ im Profil, Farbe wie die anderen Knöpfe
 - **2.11.2** – Portionen ändern und löschen nur noch Ersteller und Admin, eigene Portionen direkt beim Lebensmittel
 - **2.11.1** – Admin-Dashboard: Portionen von Lebensmitteln aus Open Food Facts und USDA bearbeiten

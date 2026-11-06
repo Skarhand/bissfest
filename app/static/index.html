@@ -124,6 +124,7 @@
         <button type="button" class="btn small d-undo" aria-label="Letzten Kaffee zurücknehmen">−</button>
         <button type="button" class="btn small primary d-add" data-size="cup">+ Tasse <small>150 ml</small></button>
         <button type="button" class="btn small primary d-add" data-size="mug">+ Pott <small>250 ml</small></button>
+        <button type="button" class="btn small primary d-add" data-size="espresso">+ Espresso <small>30 ml</small></button>
       </div>
       <p class="muted tiny d-hint"></p>
     </div>
@@ -336,6 +337,7 @@
       </label>
       <div id="s-coffee-details" class="form">
         <label>Koffein pro Tasse (150 ml, in mg)<input type="number" id="s-caffeine" inputmode="numeric" min="0" max="500" step="5"></label>
+        <label>Koffein pro Espresso (30 ml, in mg)<input type="number" id="s-espresso" inputmode="numeric" min="0" max="500" step="5"></label>
         <p class="muted tiny">Richtwerte: Filterkaffee ≈ 90 mg, Cappuccino ≈ 75 mg, Espresso ≈ 65 mg, entkoffeiniert ≈ 3 mg.
           Ein Pott (250 ml) zählt automatisch mit der entsprechend größeren Menge. Milch und Zucker bitte als
           Lebensmittel eintragen – die Kaffee-Karte zählt keine Kalorien.</p>

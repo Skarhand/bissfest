@@ -31,9 +31,9 @@ Fehler kommen als JSON `{"detail": "…"}`:
   "meals": [{"index": 0, "name": "Frühstück", "kcal": 456, "entries": 5, "reminder": "09:10"}],
   "water": {"ml": 1500, "goal_ml": 2000, "percent": 75},
   "weight": {"today_kg": 77.2, "latest_kg": 77.2, "latest_date": "2026-11-04", "target_kg": 75.0, "change_30d_kg": -2.8},
-  "coffee": {"enabled": true, "cups": 1, "mugs": 2, "ml": 650, "caffeine_mg": 390},
-  "tea": {"enabled": false, "cups": 0, "mugs": 0, "ml": 0, "caffeine_mg": 0},
-  "caffeine_total_mg": 390
+  "coffee": {"enabled": true, "cups": 1, "mugs": 2, "espressos": 1, "ml": 680, "caffeine_mg": 455},
+  "tea": {"enabled": false, "cups": 0, "mugs": 0, "espressos": 0, "ml": 0, "caffeine_mg": 0},
+  "caffeine_total_mg": 455
 }
 ```
 
@@ -49,7 +49,7 @@ Alle Schreib-Endpunkte antworten mit dem vollständigen Status wie oben.
 |---|---|---|
 | `POST /api/v1/water` | `{"ml": 250}` | Wasser eintragen (−3000…3000, negativ zieht ab, nie unter 0) |
 | `POST /api/v1/weight` | `{"kg": 77.2, "date": "2026-11-04"}` | Gewicht setzen (20…400 kg, `date` optional) |
-| `POST /api/v1/drink` | `{"kind": "coffee", "size": "mug"}` | Kaffee/Tee: `cup` = 150 ml, `mug` = 250 ml |
+| `POST /api/v1/drink` | `{"kind": "coffee", "size": "mug"}` | Kaffee/Tee: `cup` = 150 ml, `mug` = 250 ml, nur Kaffee (ab Bissfest 2.12.0): `espresso` = 30 ml |
 | `DELETE /api/v1/drink/last?kind=tea` | – | Letzten Kaffee/Tee des Tages zurücknehmen |
 
 ## Beispiel

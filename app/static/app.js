@@ -1127,26 +1127,33 @@ async function loadHistory() {
 const CAFFEINE_LIMIT = 400; // mg pro Tag, Empfehlung der EFSA für gesunde Erwachsene
 
 const CUP_ML = 150; // auf diese Menge bezieht sich "Koffein pro Tasse"
+const ESPRESSO_ML = 30;
 const DRINKS = {
   coffee: { name: "Kaffee", icon: "☕", enabled: "coffee_enabled", mg: "caffeine_mg" },
   tea: { name: "Tee", icon: "🍵", enabled: "tea_enabled", mg: "tea_caffeine_mg" },
 };
-const EMPTY_DRINK = { cups: 0, mugs: 0, ml: 0 };
-const caffeineOf = (ml, kind) => (ml / CUP_ML) * state.user[DRINKS[kind].mg];
+const EMPTY_DRINK = { cups: 0, mugs: 0, espressos: 0, ml: 0 };
+// Espresso ist viel konzentrierter als Filterkaffee und zählt deshalb pro Stück, nicht nach Menge
+const caffeineOf = (c, kind) => {
+  const espressos = c.espressos || 0;
+  return ((c.ml - espressos * ESPRESSO_ML) / CUP_ML) * state.user[DRINKS[kind].mg] + espressos * state.user.espresso_caffeine_mg;
+};
 const enabledDrinks = () => Object.keys(DRINKS).filter((k) => state.user[DRINKS[k].enabled]);
 
 function renderDrinks() {
   const active = enabledDrinks();
   // Koffein aus Kaffee und Tee zählt gemeinsam gegen die Tagesgrenze
-  const totalMg = active.reduce((sum, k) => sum + caffeineOf((state.data[k] || EMPTY_DRINK).ml, k), 0);
+  const totalMg = active.reduce((sum, k) => sum + caffeineOf(state.data[k] || EMPTY_DRINK, k), 0);
   const over = totalMg > CAFFEINE_LIMIT;
   Object.entries(DRINKS).forEach(([kind, d]) => {
     const card = $(`#drink-${kind}`);
     card.classList.toggle("hidden", !active.includes(kind));
     if (!active.includes(kind)) return;
-    const c = state.data[kind] || EMPTY_DRINK, mg = caffeineOf(c.ml, kind);
-    const icons = d.icon.repeat(Math.min(c.cups, 8)) + `<span class="mug">${d.icon.repeat(Math.min(c.mugs, 6))}</span>`;
-    const parts = [c.cups && `${c.cups} ${c.cups === 1 ? "Tasse" : "Tassen"}`, c.mugs && `${c.mugs} ${c.mugs === 1 ? "Pott" : "Pötte"}`].filter(Boolean);
+    const c = state.data[kind] || EMPTY_DRINK, mg = caffeineOf(c, kind);
+    const icons = d.icon.repeat(Math.min(c.cups, 8)) + `<span class="mug">${d.icon.repeat(Math.min(c.mugs, 6))}</span>`
+      + `<span class="espresso">${d.icon.repeat(Math.min(c.espressos || 0, 8))}</span>`;
+    const parts = [c.cups && `${c.cups} ${c.cups === 1 ? "Tasse" : "Tassen"}`, c.mugs && `${c.mugs} ${c.mugs === 1 ? "Pott" : "Pötte"}`,
+      c.espressos && `${c.espressos} ${c.espressos === 1 ? "Espresso" : "Espressi"}`].filter(Boolean);
     card.querySelector(".d-cups").innerHTML = c.ml
       ? `<span class="cup-icons">${icons}</span><strong>${parts.join(" + ")}</strong> <span class="muted">· ${fmt(c.ml)} ml</span>`
       : `<span class="muted">Noch kein ${d.name} heute.</span>`;
@@ -1185,7 +1192,7 @@ function drinksHistory(h) {
   $("#drinks-history-title").textContent = active.map((k) => `${DRINKS[k].icon} ${DRINKS[k].name}`).join(" & ");
   // Koffein je Tag über alle aktiven Getränke
   const perDay = {};
-  active.forEach((k) => h[k].forEach((r) => (perDay[r.day] = (perDay[r.day] || 0) + caffeineOf(r.ml, k))));
+  active.forEach((k) => h[k].forEach((r) => (perDay[r.day] = (perDay[r.day] || 0) + caffeineOf(r, k))));
   const days = Object.keys(perDay).length;
   const over = Object.values(perDay).filter((mg) => mg > CAFFEINE_LIMIT).length;
   const avgMl = (k) => h[k].reduce((s, r) => s + r.ml, 0) / days;
@@ -1226,6 +1233,7 @@ function fillSettings() {
   $("#s-target").value = u.target_weight ?? "";
   $("#s-coffee").checked = u.coffee_enabled;
   $("#s-caffeine").value = u.caffeine_mg;
+  $("#s-espresso").value = u.espresso_caffeine_mg;
   $("#s-coffee-details").classList.toggle("hidden", !u.coffee_enabled);
   $("#s-tea").checked = u.tea_enabled;
   $("#s-tea-caffeine").value = u.tea_caffeine_mg;
@@ -1294,6 +1302,7 @@ async function saveSettings(msgSel) {
         reminders: Object.fromEntries($$("[data-meal-time]").map((inp, i) => [String(i), inp.value]).filter(([, t]) => t)),
         coffee_enabled: $("#s-coffee").checked,
         caffeine_mg: Math.round(+$("#s-caffeine").value) || 80,
+        espresso_caffeine_mg: $("#s-espresso").value === "" ? 65 : Math.round(+$("#s-espresso").value),
         tea_enabled: $("#s-tea").checked,
         tea_caffeine_mg: $("#s-tea-caffeine").value === "" ? 40 : Math.round(+$("#s-tea-caffeine").value),
       },

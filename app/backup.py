@@ -45,7 +45,7 @@ def _user_export(conn: sqlite3.Connection, user: sqlite3.Row) -> dict:
             "protein_100g, carbs_100g, sugar_100g, fat_100g, source, code FROM food_entries "
             "WHERE user_id=? ORDER BY day, meal, created"),
         "wasser": rows("SELECT day, SUM(ml) AS ml FROM water_entries WHERE user_id=? GROUP BY day ORDER BY day"),
-        **{name: rows("SELECT day, SUM(ml = 150) AS tassen, SUM(ml = 250) AS poette, SUM(ml) AS ml "
+        **{name: rows("SELECT day, SUM(ml = 150) AS tassen, SUM(ml = 250) AS poette, SUM(ml = 30) AS espressi, SUM(ml) AS ml "
                       f"FROM coffee_entries WHERE user_id=? AND kind='{kind}' GROUP BY day ORDER BY day")
            for name, kind in (("kaffee", "coffee"), ("tee", "tea"))},
         "trophaeen": rows("SELECT key, datetime(earned, 'unixepoch', 'localtime') AS verdient FROM user_trophies "
