@@ -230,6 +230,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.14.4** – USDA-Suche zuverlässig: Anfrage per POST statt GET, „USDA nicht erreichbar“ trat dadurch sporadisch auf
 - **2.14.3** – Eigener USDA-Schlüssel über die `.env`, API-Schlüssel nicht mehr im Log
 - **2.14.2** – Erster automatischer Build des Docker-Images
 - **2.14.1** – Fertiges Docker-Image für amd64 und arm64 in der GitHub Container Registry

@@ -65,7 +65,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.14.3"
+APP_VERSION = "2.14.4"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -1257,9 +1257,9 @@ FDC_NUTRIENTS = {"208": "kcal_100g", "203": "protein_100g", "205": "carbs_100g",
 async def search_fdc(client: httpx.AsyncClient, q: str) -> list[dict]:
     if not FDC_API_KEY:
         return []
-    r = await client.get("https://api.nal.usda.gov/fdc/v1/foods/search",
-                         params={"api_key": FDC_API_KEY, "query": q, "pageSize": 15,
-                                 "dataType": "Foundation,SR Legacy,Survey (FNDDS)"})
+    # POST statt GET: Die Klammern in "Survey (FNDDS)" führen als URL-Parameter immer wieder zu 400 Bad Request
+    r = await client.post("https://api.nal.usda.gov/fdc/v1/foods/search", params={"api_key": FDC_API_KEY},
+                          json={"query": q, "pageSize": 15, "dataType": ["Foundation", "SR Legacy", "Survey (FNDDS)"]})
     r.raise_for_status()
     out = []
     for f in r.json().get("foods", []):
