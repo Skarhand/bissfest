@@ -1,6 +1,6 @@
 services:
   abnehm-app:
-    build: .
+    image: ghcr.io/skarhand/bissfest:latest
     container_name: abnehm-app
     restart: unless-stopped
     ports:

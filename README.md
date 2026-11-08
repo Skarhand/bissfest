@@ -23,12 +23,14 @@ Selbst gehostete Web-App (PWA) zum Abnehmen – läuft im Browser auf iPhone, An
 
 ## Starten
 
-```bash
-git clone https://github.com/Skarhand/bissfest.git
-```
+Fertige Images für amd64 und arm64 liegen in der GitHub Container Registry (`ghcr.io/skarhand/bissfest`).
+Der Container läuft als Benutzer 1000, deshalb brauchen die beiden Datenordner diesen Besitzer:
 
 ```bash
-cd bissfest && docker compose up -d --build
+mkdir bissfest && cd bissfest
+curl -O https://raw.githubusercontent.com/Skarhand/bissfest/main/docker-compose.yml
+mkdir data backup && sudo chown 1000:1000 data backup
+docker compose up -d
 ```
 
 Dann `http://<server-ip>:7854` öffnen. Für neue Konten braucht Bissfest einen Mailzugang, siehe
@@ -46,6 +48,15 @@ services:
       COOKIE_SECURE: "true"
       VAPID_SUBJECT: "mailto:du@example.de"
 ```
+
+**Aktualisieren:**
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+**Selbst aus dem Quellcode bauen:** Repository klonen und in der `docker-compose.override.yml` unter dem Dienst `abnehm-app`
+die Zeile `build: .` ergänzen, dann `docker compose up -d --build`.
 
 ## Auf dem Handy installieren
 
@@ -219,6 +230,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.14.1** – Fertiges Docker-Image für amd64 und arm64 in der GitHub Container Registry
 - **2.14.0** – Android-App: Update der APK direkt in den Einstellungen
 - **2.13.0** – Sport: mit über 20 Sportarten zusätzliche Kalorien verdienen; Koffein pro Espresso wird jetzt auch gespeichert
 - **2.12.0** – Espresso im Kaffee-Tracker mit eigenem Koffeinwert, auch über die API
