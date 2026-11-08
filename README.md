@@ -83,7 +83,7 @@ bissfest.example.de {
 |-------------------------------------------|---------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ALLOW_REGISTRATION`                      | `true`                          | Neue Konten erlauben. Nach dem Einrichten auf `false` stellen.                                                                                           |
 | `COOKIE_SECURE`                           | `false`                         | `true` hinter HTTPS                                                                                                                                      |
-| `FDC_API_KEY`                             | `DEMO_KEY`                      | USDA-Key ([kostenlos](https://fdc.nal.usda.gov/api-key-signup), 1000 Anfragen/Std.). `DEMO_KEY` erlaubt nur ~10 Suchen pro Stunde. Leer = USDA-Suche aus |
+| `FDC_API_KEY`                             | `DEMO_KEY`                      | USDA-Key ([kostenlos](https://fdc.nal.usda.gov/api-key-signup), 1000 Anfragen/Std.). `DEMO_KEY` erlaubt nur ~10 Suchen pro Stunde. Eintragen in der `.env`. Zum Abschalten in der Override-Datei auf `""` setzen |
 | `VAPID_SUBJECT`                           | `mailto:abnehm-app@example.org` | Kontaktadresse für Push-Dienste                                                                                                                          |
 | `SOURCE_URL`                              | –                               | Link zum Quellcode in den Einstellungen (Pflicht bei geänderten Fassungen, AGPL § 13)                                                                    |
 | `ANDROID_PACKAGE` / `ANDROID_CERT_SHA256` | offizielle App                  | Nur für selbst signierte APKs ändern (assetlinks.json)                                                                                                   |
@@ -230,6 +230,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.14.3** – Eigener USDA-Schlüssel über die `.env`, API-Schlüssel nicht mehr im Log
 - **2.14.2** – Erster automatischer Build des Docker-Images
 - **2.14.1** – Fertiges Docker-Image für amd64 und arm64 in der GitHub Container Registry
 - **2.14.0** – Android-App: Update der APK direkt in den Einstellungen

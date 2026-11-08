@@ -28,7 +28,7 @@ services:
       # Hinter HTTPS auf "true" setzen, damit das Login-Cookie nur über HTTPS gesendet wird
       COOKIE_SECURE: "false"
       # Kostenloser Key: https://fdc.nal.usda.gov/api-key-signup  (DEMO_KEY = stark limitiert, leer = USDA aus)
-      FDC_API_KEY: "DEMO_KEY"
+      FDC_API_KEY: "${FDC_API_KEY:-DEMO_KEY}"
       OFF_COUNTRY: "de"
       TZ: "Europe/Berlin"
       # Uhrzeit der nächtlichen Sicherung (leer = aus) und wie lange Backups aufbewahrt werden

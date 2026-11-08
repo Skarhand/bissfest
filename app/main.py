@@ -36,6 +36,7 @@ MAX_USERS_DEFAULT = int(os.environ.get("MAX_USERS", "0"))
 # Admins für /admin (Benutzernamen, kommagetrennt) – bewusst nur per Konfiguration, nicht über die Oberfläche
 ADMIN_USERS = {n.strip().lower() for n in os.environ.get("ADMIN_USERS", "").split(",") if n.strip()}
 FDC_API_KEY = os.environ.get("FDC_API_KEY", "DEMO_KEY")  # USDA FoodData Central, leer = aus
+logging.getLogger("httpx").setLevel(logging.WARNING)  # httpx schreibt sonst den API-Key mit der URL ins Log
 OFF_COUNTRY = os.environ.get("OFF_COUNTRY", "de")
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 # Öffentliche Adresse für Links in E-Mails (leer = aus der Anfrage ermitteln)
@@ -64,7 +65,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.14.2"
+APP_VERSION = "2.14.3"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
