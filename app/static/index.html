@@ -209,23 +209,6 @@
   </main>
 
   <main id="view-settings" class="view hidden">
-    <div class="card form">
-      <h2>🌓 Darstellung</h2>
-      <div class="seg" id="theme-switch" role="radiogroup" aria-label="Darstellung">
-        <button type="button" role="radio" data-theme-choice="light">☀️ Hell</button>
-        <button type="button" role="radio" data-theme-choice="dark">🌙 Dunkel</button>
-        <button type="button" role="radio" data-theme-choice="system">⚙️ System</button>
-      </div>
-      <p class="muted tiny">„System“ folgt automatisch der Einstellung deines Handys. Gilt für dieses Gerät.</p>
-      <div class="hidden form" id="color-source">
-        <strong>🎨 Farben</strong>
-        <div class="seg" role="radiogroup" aria-label="Farben">
-          <button type="button" role="radio" data-color-source="bissfest">🌿 Bissfest</button>
-          <button type="button" role="radio" data-color-source="system">📱 System</button>
-        </div>
-        <p class="muted tiny">„System“ übernimmt die Farben deines Android-Handys. Ein neues Hintergrundbild wirkt beim nächsten Start der App.</p>
-      </div>
-    </div>
     <button type="button" class="card menu-item" id="open-profile">
       <span class="avatar small" data-avatar></span>
       <span class="mi-text"><strong>Profil</strong><span class="muted tiny" id="profile-summary"></span></span>
@@ -236,9 +219,9 @@
       <span class="mi-text"><strong>Trophäen</strong><span class="muted tiny" id="trophies-summary"></span></span>
       <span class="chev">›</span>
     </button>
-    <button type="button" class="card menu-item" id="open-body">
-      <span class="mi-icon">🧮</span>
-      <span class="mi-text"><strong>Körperdaten &amp; Kaloriendefizit</strong><span class="muted tiny" id="body-summary"></span></span>
+    <button type="button" class="card menu-item" id="open-appearance">
+      <span class="mi-icon">🌓</span>
+      <span class="mi-text"><strong>Darstellung</strong><span class="muted tiny" id="appearance-summary"></span></span>
       <span class="chev">›</span>
     </button>
     <button type="button" class="card menu-item" id="open-goals">
@@ -310,6 +293,16 @@
       <span class="mi-text"><strong>Profilbild</strong><span class="muted tiny" id="avatar-summary"></span></span>
       <span class="chev">›</span>
     </button>
+    <button type="button" class="card menu-item" id="open-body">
+      <span class="mi-icon">🧮</span>
+      <span class="mi-text"><strong>Körperdaten &amp; Kaloriendefizit</strong><span class="muted tiny" id="body-summary"></span></span>
+      <span class="chev">›</span>
+    </button>
+    <button type="button" class="card menu-item" id="recommend-app">
+      <span class="mi-icon">💌</span>
+      <span class="mi-text"><strong>Bissfest empfehlen</strong><span class="muted tiny">Link mit Freunden teilen</span></span>
+      <span class="chev">›</span>
+    </button>
     <form class="card form" id="email-form">
       <h2>E-Mail-Adresse</h2>
       <p class="muted tiny">Aktuell: <strong id="email-current"></strong>. Die neue Adresse gilt erst, wenn du den Link in der Mail an sie bestätigt hast.</p>
@@ -328,6 +321,27 @@
     <a class="btn hidden" id="admin-link" href="/admin">🛠️ Admin-Dashboard</a>
     <a class="btn hidden" id="switch-server" href="bissfest://setup">📱 Server wechseln</a>
     <button class="btn danger" id="logout">Abmelden</button>
+  </main>
+
+  <main id="view-appearance" class="view hidden">
+    <button type="button" class="back-link" id="appearance-back">‹ Einstellungen</button>
+    <div class="card form">
+      <h2>🌓 Darstellung</h2>
+      <div class="seg" id="theme-switch" role="radiogroup" aria-label="Darstellung">
+        <button type="button" role="radio" data-theme-choice="light">☀️ Hell</button>
+        <button type="button" role="radio" data-theme-choice="dark">🌙 Dunkel</button>
+        <button type="button" role="radio" data-theme-choice="system">⚙️ System</button>
+      </div>
+      <p class="muted tiny">„System“ folgt automatisch der Einstellung deines Handys. Gilt für dieses Gerät.</p>
+      <div class="hidden form" id="color-source">
+        <strong>🎨 Farben</strong>
+        <div class="seg" role="radiogroup" aria-label="Farben">
+          <button type="button" role="radio" data-color-source="bissfest">🌿 Bissfest</button>
+          <button type="button" role="radio" data-color-source="system">📱 System</button>
+        </div>
+        <p class="muted tiny">„System“ übernimmt die Farben deines Android-Handys. Ein neues Hintergrundbild wirkt beim nächsten Start der App.</p>
+      </div>
+    </div>
   </main>
 
   <main id="view-trophies" class="view hidden">
@@ -436,7 +450,7 @@
   </main>
 
   <main id="view-body" class="view hidden">
-    <button type="button" class="back-link" id="body-back">‹ Einstellungen</button>
+    <button type="button" class="back-link" id="body-back">‹ Profil</button>
     <form class="card form" id="body-form">
       <h2>Körperdaten &amp; Kaloriendefizit</h2>
       <div class="row2">
@@ -693,7 +707,7 @@
       <button type="button" class="icon-btn" id="onb-close" aria-label="Später">✕</button>
     </div>
     <p class="muted tiny">Lass uns dein persönliches Kalorienziel berechnen – die voreingestellten Werte sind nur Beispiele.
-      Alles lässt sich später unter Einstellungen → Körperdaten &amp; Kaloriendefizit ändern.</p>
+      Alles lässt sich später unter Einstellungen → Profil → Körperdaten &amp; Kaloriendefizit ändern.</p>
     <div class="row2">
       <label>Geschlecht
         <select id="onb-sex" required><option value="">bitte wählen</option><option value="w">weiblich</option><option value="m">männlich</option></select>

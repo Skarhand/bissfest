@@ -230,6 +230,10 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.16.0** – „Bissfest empfehlen“ im Profil, nutzt das Teilen-Menü des Handys
+- **2.15.3** – Trophäen an zweiter Stelle, Körperdaten als Untermenü im Profil
+- **2.15.2** – Profil steht in den Einstellungen wieder an erster Stelle
+- **2.15.1** – Darstellung als eigenes Untermenü in den Einstellungen
 - **2.15.0** – Android-App 2.6.0: Systemfarben (Material You) ab Android 12 als Option unter Darstellung
 - **2.14.4** – USDA-Suche zuverlässig: Anfrage per POST statt GET, „USDA nicht erreichbar“ trat dadurch sporadisch auf
 - **2.14.3** – Eigener USDA-Schlüssel über die `.env`, API-Schlüssel nicht mehr im Log

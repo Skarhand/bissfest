@@ -1344,8 +1344,8 @@ function initSettings() {
   $("#settings-form").onsubmit = (e) => { e.preventDefault(); saveSettings("#settings-msg"); };
   $("#body-form").onsubmit = (e) => { e.preventDefault(); saveSettings("#body-msg"); };
   $("#open-body").onclick = () => showView("body");
-  $("#body-back").onclick = () => showView("settings");
-  ["profile", "goals", "reminders", "extras"].forEach((key) => {
+  $("#body-back").onclick = () => showView("profile");
+  ["appearance", "profile", "goals", "reminders", "extras"].forEach((key) => {
     $(`#open-${key}`).onclick = () => showView(key);
     $(`#${key}-back`).onclick = () => showView("settings");
   });
@@ -1484,6 +1484,14 @@ function applyTheme(choice) {
     b.classList.toggle("active", on);
     b.setAttribute("aria-checked", on);
   });
+  renderAppearanceSummary();
+}
+
+function renderAppearanceSummary() {
+  let systemColors = false;
+  try { systemColors = !!localStorage.getItem("system-colors") && localStorage.getItem("color-source") === "system"; } catch {}
+  const theme = { light: "Hell", dark: "Dunkel", system: "Wie das System" }[getTheme()];
+  $("#appearance-summary").textContent = systemColors ? `${theme}, Systemfarben` : theme;
 }
 
 function renderColorSource() {
@@ -1498,6 +1506,7 @@ function renderColorSource() {
     b.classList.toggle("active", on);
     b.setAttribute("aria-checked", on);
   });
+  renderAppearanceSummary();
 }
 
 function initTheme() {
@@ -1772,6 +1781,23 @@ function trophyImage(t) {
   return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
 }
 
+async function recommendApp() {
+  const text = "Ich achte mit Bissfest auf meine Ernährung. Mit Biss zum Wunschgewicht, schau es dir mal an:";
+  const url = location.origin;
+  if (!navigator.share) {
+    try {
+      await navigator.clipboard.writeText(`${text} ${url}`);
+      toast("Link kopiert");
+    } catch { toast("Teilen wird hier nicht unterstützt"); }
+    return;
+  }
+  try {
+    await navigator.share({ title: "Bissfest", text, url });
+  } catch (err) {
+    if (err.name !== "AbortError") toast("Teilen hat nicht geklappt"); // AbortError: im Teilen-Menü abgebrochen
+  }
+}
+
 async function shareTrophy(t) {
   const text = `🏆 Ich habe in Bissfest die Trophäe „${t.name}“ verdient! ${t.description}`;
   if (!navigator.share) {
@@ -1948,6 +1974,7 @@ function initAvatar() {
   $("#avatar-camera-btn").classList.toggle("hidden", !phone);
   if (phone) $("#avatar-file-btn").textContent = "🖼️ Aus der Galerie";
   $("#open-avatar").onclick = () => showView("avatar");
+  $("#recommend-app").onclick = recommendApp;
   $("#avatar-back").onclick = () => showView("profile");
   $("#avatar-remove").onclick = async () => {
     if (!confirm("Profilbild löschen?")) return;
@@ -2105,7 +2132,7 @@ function initFeedback() {
 
 /* ------------------------------------------------------------ Navigation */
 
-const SUBVIEW_TAB = { body: "settings", profile: "settings", goals: "settings", reminders: "settings", extras: "settings", avatar: "settings", trophies: "settings" };
+const SUBVIEW_TAB = { appearance: "settings", body: "settings", profile: "settings", goals: "settings", reminders: "settings", extras: "settings", avatar: "settings", trophies: "settings" };
 
 function showView(view) {
   const tab = SUBVIEW_TAB[view] || view;
