@@ -14,8 +14,8 @@ import {
   AndroidSdkTools, Config, ConsoleLog, GradleWrapper, JdkHelper, TwaGenerator, TwaManifest,
 } from "@bubblewrap/core";
 
-const VERSION_NAME = "2.5.0"; // bei neuer APK auch ANDROID_APP_VERSION in app/main.py anpassen
-const VERSION_CODE = 20500; // muss bei jeder neuen APK steigen (2.5.1 -> 20501, 2.6.0 -> 20600 …)
+const VERSION_NAME = "2.6.0"; // bei neuer APK auch ANDROID_APP_VERSION in app/main.py anpassen
+const VERSION_CODE = 20600; // muss bei jeder neuen APK steigen (2.5.1 -> 20501, 2.6.0 -> 20600 …)
 const PACKAGE_ID = "de.facgooder.bissfest";
 const WEB_MANIFEST = "https://bissfest.facgooder.de/static/manifest.json";
 
@@ -68,7 +68,7 @@ patch(path.join(javaDir, "LauncherActivity.java"), [[
         // Gewählter Bissfest-Server (SetupActivity); direkte Links behalten ihr Ziel
         String server = SetupActivity.serverUrl(this);
         if (server != null && getIntent().getData() == null) {
-            return Uri.parse(server + "/");
+            return Uri.parse(server + "/" + SetupActivity.systemColorsFragment(this));
         }`,
 ]]);
 const launcherFilter = `<intent-filter>

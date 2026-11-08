@@ -1475,6 +1475,7 @@ function getTheme() {
 function applyTheme(choice) {
   if (choice === "light" || choice === "dark") document.documentElement.dataset.theme = choice;
   else delete document.documentElement.dataset.theme;
+  window.applyColors();
   const dark = choice === "dark" || (choice === "system" && darkQuery.matches);
   // Farbe der Statusleiste / Browserleiste an den Hintergrund anpassen
   document.querySelector('meta[name="theme-color"]').content = dark ? "#0e1411" : "#fbf7ef";
@@ -1485,8 +1486,29 @@ function applyTheme(choice) {
   });
 }
 
+function renderColorSource() {
+  let available = false, source = "bissfest";
+  try {
+    available = !!localStorage.getItem("system-colors");
+    source = localStorage.getItem("color-source") || "bissfest";
+  } catch {}
+  $("#color-source").classList.toggle("hidden", !available);
+  $$("[data-color-source]").forEach((b) => {
+    const on = b.dataset.colorSource === source;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-checked", on);
+  });
+}
+
 function initTheme() {
   applyTheme(getTheme());
+  renderColorSource();
+  window.addEventListener("hashchange", renderColorSource);
+  $$("[data-color-source]").forEach((b) => (b.onclick = () => {
+    try { localStorage.setItem("color-source", b.dataset.colorSource); } catch {}
+    window.applyColors();
+    renderColorSource();
+  }));
   $$("[data-theme-choice]").forEach((b) => (b.onclick = () => {
     const choice = b.dataset.themeChoice;
     try { localStorage.setItem("theme", choice); } catch {}

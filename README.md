@@ -230,6 +230,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.15.0** – Android-App 2.6.0: Systemfarben (Material You) ab Android 12 als Option unter Darstellung
 - **2.14.4** – USDA-Suche zuverlässig: Anfrage per POST statt GET, „USDA nicht erreichbar“ trat dadurch sporadisch auf
 - **2.14.3** – Eigener USDA-Schlüssel über die `.env`, API-Schlüssel nicht mehr im Log
 - **2.14.2** – Erster automatischer Build des Docker-Images

@@ -30,6 +30,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Collections;
+import java.util.Locale;
 
 /**
  * Einstieg der App: Beim ersten Start wird die Adresse des Bissfest-Servers abgefragt und geprüft,
@@ -47,6 +48,23 @@ public class SetupActivity extends Activity {
 
     static String serverUrl(Context context) {
         return context.getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_SERVER, null);
+    }
+
+    /** Material-You-Farben als #-Teil der Startadresse (Hell, dann Dunkel), vor Android 12 leer. */
+    static String systemColorsFragment(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return "";
+        }
+        int[] tones = {
+                android.R.color.system_accent1_600, android.R.color.system_accent1_100, android.R.color.system_accent1_0,
+                android.R.color.system_accent1_200, android.R.color.system_accent1_700, android.R.color.system_accent1_800,
+        };
+        StringBuilder colors = new StringBuilder("#syscolors=");
+        for (int i = 0; i < tones.length; i++) {
+            colors.append(i == 0 ? "" : ".")
+                    .append(String.format(Locale.ROOT, "%06x", context.getColor(tones[i]) & 0xFFFFFF));
+        }
+        return colors.toString();
     }
 
     @Override

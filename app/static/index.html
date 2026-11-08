@@ -7,6 +7,31 @@
   <script>
     // Gewählte Darstellung vor dem ersten Zeichnen setzen (kein Aufblitzen im falschen Modus)
     try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+
+    // Systemfarben (Android 12+): Die App liefert sie beim Start im #-Teil der Adresse. Reihenfolge: Hell dann Dunkel,
+    // je Akzent, heller Akzent, Schrift auf Akzent. Hier statt in app.js, damit das Bissfest-Grün nicht aufblitzt.
+    (function () {
+      const root = document.documentElement, names = ["--accent", "--accent-soft", "--on-accent"];
+      const get = (key) => { try { return localStorage.getItem(key); } catch (e) { return null; } };
+      function readHash() {
+        const m = /^#syscolors=([0-9a-f]{6}(?:\.[0-9a-f]{6}){5})$/i.exec(location.hash);
+        if (!m) return;
+        try { localStorage.setItem("system-colors", m[1]); } catch (e) {}
+        history.replaceState(null, "", location.pathname + location.search);
+      }
+      window.applyColors = function () {
+        const raw = get("system-colors"), on = raw && get("color-source") === "system", theme = get("theme");
+        const colors = raw ? raw.split(".") : [];
+        const dark = theme === "dark" || (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        names.forEach((name, i) => {
+          if (on) root.style.setProperty(name, "#" + colors[(dark ? 3 : 0) + i]);
+          else root.style.removeProperty(name);
+        });
+      };
+      readHash();
+      window.applyColors();
+      window.addEventListener("hashchange", () => { readHash(); window.applyColors(); });
+    })();
   </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -192,6 +217,14 @@
         <button type="button" role="radio" data-theme-choice="system">⚙️ System</button>
       </div>
       <p class="muted tiny">„System“ folgt automatisch der Einstellung deines Handys. Gilt für dieses Gerät.</p>
+      <div class="hidden form" id="color-source">
+        <strong>🎨 Farben</strong>
+        <div class="seg" role="radiogroup" aria-label="Farben">
+          <button type="button" role="radio" data-color-source="bissfest">🌿 Bissfest</button>
+          <button type="button" role="radio" data-color-source="system">📱 System</button>
+        </div>
+        <p class="muted tiny">„System“ übernimmt die Farben deines Android-Handys. Ein neues Hintergrundbild wirkt beim nächsten Start der App.</p>
+      </div>
     </div>
     <button type="button" class="card menu-item" id="open-profile">
       <span class="avatar small" data-avatar></span>
