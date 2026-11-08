@@ -230,6 +230,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.14.2** – Erster automatischer Build des Docker-Images
 - **2.14.1** – Fertiges Docker-Image für amd64 und arm64 in der GitHub Container Registry
 - **2.14.0** – Android-App: Update der APK direkt in den Einstellungen
 - **2.13.0** – Sport: mit über 20 Sportarten zusätzliche Kalorien verdienen; Koffein pro Espresso wird jetzt auch gespeichert
