@@ -163,7 +163,7 @@ Der Signaturschlüssel liegt **außerhalb des Repos** in `../android-signing/`. 
 „Bissfest Kalorien“, „Bissfest Wasser“, „Bissfest Kaffee“ und „Bissfest Tee“ ablegen. Sie zeigen den Tagesstand, die Getränke-Widgets tragen per Knopf direkt ein.
 Ab Android 12 folgen sie den Systemfarben. Der Stand wird alle 30 Minuten, nach jedem Eintrag und beim Öffnen der App aktualisiert.
 
-**iPhone/iPad:** Apple erlaubt Web-Apps keine eigenen Widgets. Über die kostenlose App [Scriptable](https://scriptable.app) geht es
+**iPhone/iPad (noch nicht auf einem echten Gerät getestet):** Apple erlaubt Web-Apps keine eigenen Widgets. Über die kostenlose App [Scriptable](https://scriptable.app) geht es
 trotzdem: Unter Einstellungen → Extras → Widgets ein Skript erzeugen und dort einfügen. Das Widget zeigt nur an, ein Tipp öffnet Bissfest.
 
 Beide nutzen einen eigenen API-Token (`Android-Widget`, `iPhone-Widget`), der sich dort wie jeder andere Token widerrufen lässt.
@@ -241,6 +241,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.17.2** – Hinweis, dass das iPhone-Widget noch nicht auf einem echten Gerät getestet ist
 - **2.17.1** – Widget für die verbleibenden Kalorien (App 2.7.1)
 - **2.17.0** – Widgets: Wasser, Kaffee und Tee für den Android-Startbildschirm (App 2.7.0), Anzeige-Widget für das iPhone über Scriptable
 - **2.16.0** – „Bissfest empfehlen“ im Profil, nutzt das Teilen-Menü des Handys
