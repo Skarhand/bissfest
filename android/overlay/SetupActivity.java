@@ -22,6 +22,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.json.JSONObject;
 
@@ -70,6 +71,10 @@ public class SetupActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (connectWidgets()) {
+            finish();
+            return;
+        }
         String saved = serverUrl(this);
         boolean change = getIntent() != null && "bissfest".equals(getIntent().getScheme());
         if (saved != null && !change) {
@@ -77,6 +82,21 @@ public class SetupActivity extends Activity {
             return;
         }
         buildUi(saved != null ? saved : DEFAULT_SERVER);
+    }
+
+    /** bissfest://widget?token=… aus den Einstellungen der Web-App. Der Server kommt bewusst nie aus dem Link. */
+    private boolean connectWidgets() {
+        Uri data = getIntent() == null ? null : getIntent().getData();
+        if (data == null || !"bissfest".equals(data.getScheme()) || !"widget".equals(data.getHost())) {
+            return false;
+        }
+        String token = data.getQueryParameter("token");
+        boolean valid = token != null && token.matches("bf_[A-Za-z0-9_-]{20,}") && serverUrl(this) != null;
+        if (valid) {
+            BissfestWidget.connect(this, token);
+        }
+        Toast.makeText(this, valid ? "Widgets verbunden" : "Widgets konnten nicht verbunden werden", Toast.LENGTH_LONG).show();
+        return true;
     }
 
     private int dp(int value) {
@@ -178,7 +198,11 @@ public class SetupActivity extends Activity {
                     message.setText("Unter dieser Adresse wurde kein Bissfest-Server gefunden.");
                     return;
                 }
+                boolean otherServer = !url.equals(serverUrl(this));
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(KEY_SERVER, url).apply();
+                if (otherServer) {
+                    BissfestWidget.disconnect(this);
+                }
                 openApp();
             });
         }).start();
@@ -229,6 +253,7 @@ public class SetupActivity extends Activity {
 
     private void openApp() {
         addShortcut();
+        BissfestWidget.updateAll(this);
         Intent intent = new Intent(this, LauncherActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);

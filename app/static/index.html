@@ -430,6 +430,34 @@
       </div>
       <p class="ok" id="extras-msg"></p>
     </div>
+    <div class="card form hidden" id="widget-card">
+      <h2>📲 Widgets</h2>
+      <div class="form hidden" id="widget-android">
+        <p class="muted tiny">Verbleibende Kalorien, Wasser, Kaffee und Tee auf dem Startbildschirm: Tagesstand sehen und direkt eintragen.
+          Dafür braucht es die App-Version 2.7.0 oder neuer.</p>
+        <button type="button" class="btn primary" id="widget-prepare">Verbindung vorbereiten</button>
+        <a class="btn primary hidden" id="widget-connect">Widgets jetzt verbinden</a>
+        <p class="muted tiny">Danach den Startbildschirm lange gedrückt halten, „Widgets“ wählen und ein Bissfest-Widget ablegen.</p>
+      </div>
+      <div class="form hidden" id="widget-ios">
+        <p class="muted tiny">Web-Apps dürfen auf dem iPhone keine eigenen Widgets anlegen. Mit der kostenlosen App Scriptable
+          klappt es trotzdem. Das Widget zeigt deinen Tagesstand, ein Tipp darauf öffnet Bissfest.</p>
+        <ol class="muted tiny widget-steps">
+          <li>Scriptable aus dem App Store laden.</li>
+          <li>Hier das Skript erzeugen und kopieren.</li>
+          <li>In Scriptable mit „+“ ein neues Skript anlegen, einfügen und „Bissfest“ nennen.</li>
+          <li>Auf dem Home-Bildschirm ein Scriptable-Widget hinzufügen, lange drücken, „Widget bearbeiten“ und bei Script „Bissfest“ wählen.
+            Unter Parameter geht calories, water, coffee oder tea.</li>
+        </ol>
+        <button type="button" class="btn primary" id="widget-ios-create">Skript erzeugen</button>
+        <div class="token-new hidden" id="widget-ios-result">
+          <textarea id="widget-ios-script" rows="4" readonly aria-label="Skript für Scriptable"></textarea>
+          <button type="button" class="btn small" id="widget-ios-copy">📋 Kopieren</button>
+          <p class="muted tiny">Das Skript enthält deinen persönlichen Zugang, bitte nicht weitergeben.</p>
+        </div>
+      </div>
+      <p class="err" id="widget-err"></p>
+    </div>
     <div class="card form" id="ha-card">
       <h2>🏠 Home Assistant</h2>
       <p class="muted tiny">Verbinde Bissfest mit Home Assistant: Kalorien, Wasser, Gewicht, Kaffee &amp; Tee als Sensoren,

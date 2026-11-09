@@ -270,7 +270,8 @@ def collect_stats(conn: sqlite3.Connection, u: sqlite3.Row, today: date) -> dict
         "target_set": int(bool(target)), "avatar": int(bool(u["avatar_version"])),
         "reminders": int(u["reminders"] not in (None, "", "{}")),
         "push": _count(conn, "SELECT COUNT(*) FROM push_subscriptions WHERE user_id=?", uid),
-        "api_tokens": _count(conn, "SELECT COUNT(*) FROM api_tokens WHERE user_id=?", uid),
+        # Die Zugänge der Widgets zählen nicht für die Home-Assistant-Trophäe
+        "api_tokens": _count(conn, "SELECT COUNT(*) FROM api_tokens WHERE user_id=? AND name NOT IN ('Android-Widget', 'iPhone-Widget')", uid),
         "feedback": _count(conn, "SELECT COUNT(*) FROM feedback WHERE user_id=?", uid),
         "templates": _count(conn, "SELECT COUNT(*) FROM meal_templates WHERE user_id=?", uid),
         "custom_foods": _count(conn, "SELECT COUNT(*) FROM custom_foods WHERE created_by=?", uid),

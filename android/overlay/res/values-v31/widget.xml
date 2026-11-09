@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ab Android 12 folgen die Widgets den Systemfarben (Material You) -->
+<resources>
+    <color name="widget_background">@android:color/system_neutral1_10</color>
+    <color name="widget_text">@android:color/system_neutral1_900</color>
+    <color name="widget_muted">@android:color/system_neutral2_700</color>
+    <color name="widget_track">@android:color/system_neutral2_100</color>
+    <color name="widget_accent">@android:color/system_accent1_600</color>
+    <color name="widget_button">@android:color/system_accent1_100</color>
+</resources>

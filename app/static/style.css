@@ -423,3 +423,6 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 #sport-preview:empty { display: none; }
 #apk-update { display: block; color: var(--text); text-align: center; text-decoration: none; }
 #apk-update.primary { color: var(--on-accent); }
+#widget-connect { display: block; color: var(--on-accent); text-align: center; text-decoration: none; }
+.widget-steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+#widget-ios-script { font-family: monospace; font-size: .75rem; }

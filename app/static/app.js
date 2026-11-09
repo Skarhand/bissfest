@@ -111,6 +111,7 @@ async function initAuth() {
   $("#android-server").textContent = location.origin;
   $("#switch-server").classList.toggle("hidden", appMode() !== "Android-App");
   initApkUpdate(cfg);
+  initWidgets(cfg);
   // „Spendier mir einen Kaffee“ per Wero – Karte nur, wenn ein Link eingerichtet ist
   if (cfg.donate_wero) $("#donate-wero").href = cfg.donate_wero;
   $("#donate-card").classList.toggle("hidden", !cfg.donate_wero);
@@ -2023,6 +2024,63 @@ function initApkUpdate(cfg) {
     try { localStorage.setItem(APK_VERSION_KEY, cfg.android_apk_version); } catch {}
     renderApkUpdate(cfg.android_apk_version);
     toast("Download gestartet");
+  };
+}
+
+/* Widgets: Android bekommt den Token per Link an die App, das iPhone als fertiges Skript für Scriptable */
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+// Ersetzt einen früheren Zugang gleichen Namens, damit wiederholtes Einrichten keine Tokens anhäuft
+async function createWidgetToken(name) {
+  const tokens = await api("/tokens");
+  await Promise.all(tokens.filter((t) => t.name === name).map((t) => api(`/tokens/${t.id}`, { method: "DELETE" })));
+  const created = await api("/tokens", { method: "POST", body: { name } });
+  loadTokens();
+  return created.token;
+}
+
+function showAppUpdateHint() {
+  if (location.hash !== "#app-update") return;
+  history.replaceState(null, "", location.pathname + location.search);
+  toast("Bitte zuerst die App aktualisieren");
+}
+
+function initWidgets(cfg) {
+  const android = appMode() === "Android-App", ios = isIOS();
+  $("#widget-card").classList.toggle("hidden", !android && !ios);
+  $("#widget-android").classList.toggle("hidden", !android);
+  $("#widget-ios").classList.toggle("hidden", !ios);
+  const fail = (err) => { $("#widget-err").textContent = err.message; };
+  showAppUpdateHint();
+  window.addEventListener("hashchange", showAppUpdateHint);
+  // Zwei Schritte: Der Wechsel in die App braucht einen frischen Tipp, das Anlegen des Tokens läuft davor
+  $("#widget-prepare").onclick = async () => {
+    $("#widget-err").textContent = "";
+    try {
+      const token = await createWidgetToken("Android-Widget");
+      const fallback = encodeURIComponent(`${location.origin}/#app-update`);
+      $("#widget-connect").href = `intent://widget?token=${encodeURIComponent(token)}#Intent;scheme=bissfest;package=${cfg.android_package};S.browser_fallback_url=${fallback};end`;
+      $("#widget-prepare").classList.add("hidden");
+      $("#widget-connect").classList.remove("hidden");
+    } catch (err) { fail(err); }
+  };
+  $("#widget-ios-create").onclick = async () => {
+    $("#widget-err").textContent = "";
+    try {
+      const template = await fetch("/static/bissfest-widget-ios.js", { cache: "no-store" }).then((r) => r.text());
+      const token = await createWidgetToken("iPhone-Widget");
+      $("#widget-ios-script").value = template.replace("__SERVER__", location.origin).replace("__TOKEN__", token);
+      $("#widget-ios-result").classList.remove("hidden");
+    } catch (err) { fail(err); }
+  };
+  $("#widget-ios-copy").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText($("#widget-ios-script").value);
+      toast("Skript kopiert");
+    } catch {
+      $("#widget-ios-script").select();
+      toast("Bitte manuell kopieren");
+    }
   };
 }
 

@@ -14,8 +14,8 @@ import {
   AndroidSdkTools, Config, ConsoleLog, GradleWrapper, JdkHelper, TwaGenerator, TwaManifest,
 } from "@bubblewrap/core";
 
-const VERSION_NAME = "2.6.0"; // bei neuer APK auch ANDROID_APP_VERSION in app/main.py anpassen
-const VERSION_CODE = 20600; // muss bei jeder neuen APK steigen (2.5.1 -> 20501, 2.6.0 -> 20600 …)
+const VERSION_NAME = "2.7.1"; // bei neuer APK auch ANDROID_APP_VERSION in app/main.py anpassen
+const VERSION_CODE = 20701; // muss bei jeder neuen APK steigen (2.5.1 -> 20501, 2.6.0 -> 20600 …)
 const PACKAGE_ID = "de.facgooder.bissfest";
 const WEB_MANIFEST = "https://bissfest.facgooder.de/static/manifest.json";
 
@@ -53,6 +53,8 @@ await twa.saveToFile(path.join(projectDir, "twa-manifest.json"));
 // mit der gewählten Adresse. Jeder Bissfest-Server liefert assetlinks.json mit diesem Paket aus.
 const javaDir = path.join(projectDir, "app/src/main/java", ...PACKAGE_ID.split("."));
 fs.copyFileSync(path.join(here, "overlay/SetupActivity.java"), path.join(javaDir, "SetupActivity.java"));
+fs.copyFileSync(path.join(here, "overlay/BissfestWidget.java"), path.join(javaDir, "BissfestWidget.java"));
+fs.cpSync(path.join(here, "overlay/res"), path.join(projectDir, "app/src/main/res"), { recursive: true });
 const patch = (file, pairs) => {
   let text = fs.readFileSync(file, "utf8");
   for (const [from, to] of pairs) {
@@ -71,6 +73,11 @@ patch(path.join(javaDir, "LauncherActivity.java"), [[
             return Uri.parse(server + "/" + SetupActivity.systemColorsFragment(this));
         }`,
 ]]);
+const widgetReceivers = [["Calories", "calories", "Kalorien"], ["Water", "water", "Wasser"], ["Coffee", "coffee", "Kaffee"], ["Tea", "tea", "Tee"]]
+  .map(([cls, xml, label]) => `<receiver android:name=".BissfestWidget$${cls}" android:label="Bissfest ${label}" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_${xml}" />
+        </receiver>`).join("\n        ");
 const launcherFilter = `<intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -87,8 +94,11 @@ patch(path.join(projectDir, "app/src/main/AndroidManifest.xml"), [
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="bissfest" android:host="setup" />
+                <data android:scheme="bissfest" android:host="widget" />
             </intent-filter>
         </activity>
+
+        ${widgetReceivers}
 
         <activity android:name="LauncherActivity"`],
   ["<application", '<uses-permission android:name="android.permission.INTERNET" />\n\n    <application'],
