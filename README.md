@@ -243,6 +243,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.19.1** – Breite Fenster: Kopf- und Tab-Leiste mittig wie der Inhalt
 - **2.19.0** – Sicherheitsupdate: Mail-Links nur über `PUBLIC_URL`, Proxy-IP per `FORWARDED_ALLOW_IPS`, Login-Sperre je Konto, Admin-Namen geschützt, Push nur an bekannte Dienste, Security-Header, FastAPI aktualisiert, Sitzungen gehasht, PBKDF2 mit 600.000 Runden
 - **2.18.0** – Favoriten: bis zu 20 Lebensmittel mit ☆ merken und im Reiter ⭐ schnell wieder eintragen
 - **2.17.2** – Hinweis, dass das iPhone-Widget noch nicht auf einem echten Gerät getestet ist

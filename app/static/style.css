@@ -429,3 +429,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .picked { position: relative; padding-right: 44px; }
 #a-fav { position: absolute; top: -6px; right: -6px; font-size: 1.5rem; color: var(--muted); }
 #a-fav.on { color: #e0a100; }
+/* Breite Fenster: Kopf- und Tab-Leiste behalten ihren Hintergrund über die volle Breite, ihr Inhalt steht
+   aber wie die Ansichten in der 640-px-Spalte in der Mitte */
+.topbar { padding-left: max(8px, calc((100% - 640px) / 2 + 8px)); padding-right: max(8px, calc((100% - 640px) / 2 + 8px)); }
+.tabbar { padding-left: max(0px, calc((100% - 640px) / 2)); padding-right: max(0px, calc((100% - 640px) / 2)); }
