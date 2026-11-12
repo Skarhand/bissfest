@@ -22,4 +22,7 @@ VOLUME /data /backup
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/config')"
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# X-Forwarded-For nur von diesen Adressen glauben (IP des Reverse-Proxys, kommagetrennt). Mit "*" könnte jeder
+# Client seine IP fälschen und die Login-Sperre umgehen. Uvicorn liest FORWARDED_ALLOW_IPS selbst.
+ENV FORWARDED_ALLOW_IPS=127.0.0.1
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

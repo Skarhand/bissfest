@@ -15,7 +15,8 @@ services:
         required: false
     # Eigene Werte am besten in eine docker-compose.override.yml schreiben, die Compose automatisch einliest.
     environment:
-      # Öffentliche Adresse für Links in E-Mails, z. B. https://bissfest.example.de
+      # Öffentliche Adresse für Links in E-Mails, z. B. https://bissfest.example.de (Pflicht für Registrierung
+      # und Passwort-Reset per Mail)
       PUBLIC_URL: ""
       # Link zum Quellcode, erscheint in den Einstellungen (bei geänderten Fassungen anpassen, AGPL § 13)
       SOURCE_URL: "https://github.com/Skarhand/bissfest"
@@ -27,6 +28,9 @@ services:
       ADMIN_USERS: ""
       # Hinter HTTPS auf "true" setzen, damit das Login-Cookie nur über HTTPS gesendet wird
       COOKIE_SECURE: "false"
+      # IP des Reverse-Proxys, dem die echte Client-IP (X-Forwarded-For) geglaubt wird. Steht der Proxy auf dem
+      # Docker-Host, ist das meist das Gateway des Docker-Netzes (z. B. 172.18.0.1). Nie "*" eintragen.
+      FORWARDED_ALLOW_IPS: "127.0.0.1"
       # Kostenloser Key: https://fdc.nal.usda.gov/api-key-signup  (DEMO_KEY = stark limitiert, leer = USDA aus)
       FDC_API_KEY: "${FDC_API_KEY:-DEMO_KEY}"
       OFF_COUNTRY: "de"

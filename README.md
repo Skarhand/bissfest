@@ -82,12 +82,14 @@ bissfest.example.de {
 | Variable                                  | Standard                        | Bedeutung                                                                                                                                                |
 |-------------------------------------------|---------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ALLOW_REGISTRATION`                      | `true`                          | Neue Konten erlauben. Nach dem Einrichten auf `false` stellen.                                                                                           |
-| `COOKIE_SECURE`                           | `false`                         | `true` hinter HTTPS                                                                                                                                      |
+| `COOKIE_SECURE`                           | automatisch                         | `true` hinter HTTPS. Ohne Angabe an, wenn `PUBLIC_URL` mit https:// beginnt |
+| `PUBLIC_URL` | – | Öffentliche Adresse für Links in E-Mails. Ohne sie bleiben Registrierung und Passwort-Reset per Mail aus |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | IP des Reverse-Proxys, dem die Client-IP aus `X-Forwarded-For` geglaubt wird. Nie `*` |
 | `FDC_API_KEY`                             | `DEMO_KEY`                      | USDA-Key ([kostenlos](https://fdc.nal.usda.gov/api-key-signup), 1000 Anfragen/Std.). `DEMO_KEY` erlaubt nur ~10 Suchen pro Stunde. Eintragen in der `.env`. Zum Abschalten in der Override-Datei auf `""` setzen |
 | `VAPID_SUBJECT`                           | `mailto:abnehm-app@example.org` | Kontaktadresse für Push-Dienste                                                                                                                          |
 | `SOURCE_URL`                              | –                               | Link zum Quellcode in den Einstellungen (Pflicht bei geänderten Fassungen, AGPL § 13)                                                                    |
 | `ANDROID_PACKAGE` / `ANDROID_CERT_SHA256` | offizielle App                  | Nur für selbst signierte APKs ändern (assetlinks.json)                                                                                                   |
-| `ADMIN_USERS`                             | –                               | Benutzernamen mit Zugriff auf `/admin` (kommagetrennt)                                                                                                   |
+| `ADMIN_USERS`                             | –                               | Benutzernamen mit Zugriff auf `/admin` (kommagetrennt). Erst registrieren, dann eintragen: Eingetragene Namen lassen sich nicht neu registrieren |
 | `MAX_USERS`                               | `0`                             | Höchstzahl an Konten, 0 = unbegrenzt (im Admin-Dashboard änderbar)                                                                                       |
 | `BACKUP_TIME`                             | `03:00`                         | Uhrzeit der nächtlichen Sicherung, leer = aus                                                                                                            |
 | `BACKUP_KEEP_DAYS`                        | `30`                            | Aufbewahrungsdauer der Backups                                                                                                                           |
@@ -241,6 +243,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.19.0** – Sicherheitsupdate: Mail-Links nur über `PUBLIC_URL`, Proxy-IP per `FORWARDED_ALLOW_IPS`, Login-Sperre je Konto, Admin-Namen geschützt, Push nur an bekannte Dienste, Security-Header, FastAPI aktualisiert, Sitzungen gehasht, PBKDF2 mit 600.000 Runden
 - **2.18.0** – Favoriten: bis zu 20 Lebensmittel mit ☆ merken und im Reiter ⭐ schnell wieder eintragen
 - **2.17.2** – Hinweis, dass das iPhone-Widget noch nicht auf einem echten Gerät getestet ist
 - **2.17.1** – Widget für die verbleibenden Kalorien (App 2.7.1)

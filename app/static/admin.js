@@ -387,9 +387,9 @@ function renderSystem(s) {
   $("#reg-switch").disabled = !r.configured;
   const yes = (v) => (v ? "✅" : "❌");
   const rows = [
-    ["Version", s.version],
-    ["Admins", s.admins.join(", ")],
-    ["Letztes Backup", s.backup.last || "noch keins / nicht lesbar"],
+    ["Version", esc(s.version)],
+    ["Admins", esc(s.admins.join(", "))],
+    ["Letztes Backup", esc(s.backup.last || "noch keins / nicht lesbar")],
     ["Backup-Ziel", `${yes(s.backup.target_ok)} ${s.backup.target_ok ? "erreichbar" : "nicht gemountet!"} · täglich ${s.backup.time || "aus"} · ${s.backup.keep_days} Tage aufbewahrt`],
     ["Datenbank", fmtBytes(s.db_bytes)],
     ["Speicher frei", `${fmtBytes(s.disk_free_bytes)} von ${fmtBytes(s.disk_total_bytes)}`],

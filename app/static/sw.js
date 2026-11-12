@@ -1,6 +1,6 @@
 // Minimaler Service Worker: App-Hülle offline verfügbar, API-Daten immer frisch vom Server.
-const CACHE = "bissfest-v65";
-const SHELL = ["/", "/static/style.css", "/static/app.js", "/static/logo.png", "/static/favicon-64.png", "/static/manifest.json"];
+const CACHE = "bissfest-v66";
+const SHELL = ["/", "/static/style.css", "/static/app.js", "/static/theme-init.js", "/static/logo.png", "/static/favicon-64.png", "/static/manifest.json"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));

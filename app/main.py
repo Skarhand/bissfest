@@ -11,14 +11,15 @@ import secrets
 import shutil
 import sqlite3
 import time
-from contextlib import contextmanager
+from urllib.parse import urlparse
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -38,9 +39,11 @@ ADMIN_USERS = {n.strip().lower() for n in os.environ.get("ADMIN_USERS", "").spli
 FDC_API_KEY = os.environ.get("FDC_API_KEY", "DEMO_KEY")  # USDA FoodData Central, leer = aus
 logging.getLogger("httpx").setLevel(logging.WARNING)  # httpx schreibt sonst den API-Key mit der URL ins Log
 OFF_COUNTRY = os.environ.get("OFF_COUNTRY", "de")
-COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
-# Öffentliche Adresse für Links in E-Mails (leer = aus der Anfrage ermitteln)
+# Öffentliche Adresse für Links in E-Mails. Pflicht für den Mailversand: Aus dem Host-Header der Anfrage
+# ließen sich Links zum Zurücksetzen des Passworts auf eine fremde Domain umleiten.
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
+# Ohne Angabe automatisch an, sobald PUBLIC_URL mit https:// beginnt
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true" if PUBLIC_URL.startswith("https://") else "false").lower() == "true"
 VERIFY_HOURS = 24
 RESET_HOURS = 1
 # "Spendier mir einen Kaffee": Wero-Bezahllink (leer = Karte ausgeblendet)
@@ -65,7 +68,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.18.0"
+APP_VERSION = "2.19.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -82,7 +85,38 @@ MEAL_NAMES = [m[0] for m in MEALS]
 # Reihenfolge und Namen bis Version 1.6 (für die Umstellung bestehender Konten)
 OLD_MEAL_NAMES = ["Frühstück", "Snack 1", "Mittagessen", "Snack 2", "Abendessen", "Snack 3", "Spätmahlzeit"]
 
-app = FastAPI(title="Bissfest")
+# Keine Inline-Skripte (Theme-Startcode liegt in /static/theme-init.js); Inline-Styles nutzt die Oberfläche
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+       "media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; font-src 'self'; "
+       "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+MAX_BODY_BYTES = 8 * 1024 * 1024  # größter erlaubter Upload: Screenshot 3 MB (als Base64 etwa 4 MB)
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    init_db()
+    if mailer.configured() and not PUBLIC_URL:
+        logging.getLogger("mail").warning("SMTP ist eingerichtet, aber PUBLIC_URL fehlt: Registrierung und "
+                                          "Passwort-Mails bleiben aus, bis PUBLIC_URL gesetzt ist.")
+    yield
+
+
+app = FastAPI(title="Bissfest", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    length = request.headers.get("content-length", "")
+    if length.isdigit() and int(length) > MAX_BODY_BYTES:
+        return JSONResponse({"detail": "Anfrage zu groß"}, status_code=413)
+    response = await call_next(request)
+    headers = response.headers
+    headers.setdefault("X-Content-Type-Options", "nosniff")
+    headers.setdefault("X-Frame-Options", "DENY")
+    headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if not request.url.path.startswith(("/docs", "/redoc")):  # API-Doku lädt Skripte von einem CDN
+        headers.setdefault("Content-Security-Policy", CSP)
+    return response
 
 
 # ---------------------------------------------------------------- Datenbank
@@ -252,7 +286,7 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 
 # Später ergänzte Spalten (per Migration): Körperdaten für die Defizit-Berechnung und
 # Erinnerungszeiten als JSON {"<Mahlzeit-Index>": "HH:MM"}
-PROFILE_COLUMNS = {"sex": "TEXT", "birth_year": "INTEGER", "height_cm": "REAL", "activity": "REAL", "weekly_loss": "REAL",
+PROFILE_COLUMNS = {"pw_iterations": "INTEGER", "sex": "TEXT", "birth_year": "INTEGER", "height_cm": "REAL", "activity": "REAL", "weekly_loss": "REAL",
                    "reminders": "TEXT", "email": "TEXT",
                    # bestehende Konten gelten als bestätigt; neue Registrierungen setzen 0
                    "email_verified": "INTEGER NOT NULL DEFAULT 1",
@@ -309,7 +343,6 @@ def migrate_meal_order(conn: sqlite3.Connection):
     conn.execute("PRAGMA user_version = 1")
 
 
-@app.on_event("startup")
 def init_db():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:     [%(name)s] %(message)s")
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
@@ -326,6 +359,9 @@ def init_db():
                 if col not in have:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
         conn.execute("DELETE FROM sessions WHERE expires < ?", (int(time.time()),))
+        # Bis 2.18 lagen Sitzungen im Klartext; Hashes sind 64 Zeichen lang, alte Tokens 43
+        for r in conn.execute("SELECT token FROM sessions WHERE LENGTH(token) != 64").fetchall():
+            conn.execute("UPDATE sessions SET token=? WHERE token=?", (session_hash(r["token"]), r["token"]))
         migrate_meal_order(conn)
         # 1.13 zählte nur Tassen (Tabelle "coffee"): als 150-ml-Tassen übernehmen, dann alte Tabelle entfernen
         if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='coffee'").fetchone():
@@ -358,20 +394,43 @@ def init_db():
 
 # ---------------------------------------------------------------- Auth
 
-def hash_pw(password: str, salt: str) -> str:
-    return hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 200_000).hex()
+PW_ITERATIONS = 600_000  # OWASP-Empfehlung für PBKDF2-SHA256
+PW_ITERATIONS_LEGACY = 200_000  # Konten ohne gespeicherte Rundenzahl, beim nächsten Login hochgestuft
+
+
+def hash_pw(password: str, salt: str, iterations: int = PW_ITERATIONS) -> str:
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), iterations).hex()
+
+
+def pw_iter(u: sqlite3.Row) -> int:
+    return u["pw_iterations"] or PW_ITERATIONS_LEGACY
+
+
+def session_hash(token: str) -> str:
+    """Sitzungen liegen nur als Hash in der Datenbank, ein Backup taugt so nicht zum Anmelden."""
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 _login_attempts: dict[str, list[float]] = {}
+THROTTLE_MAX_KEYS = 10_000
+THROTTLE_MAX_WINDOW = 3600
 
 
-def throttle(key: str, limit: int = 10, window: int = 300):
+def throttle(key: str, limit: int = 10, window: int = 300, count: bool = True):
     now = time.time()
+    if len(_login_attempts) > THROTTLE_MAX_KEYS:  # Speicher begrenzen: abgelaufene Einträge entfernen
+        for k in [k for k, v in _login_attempts.items() if not v or now - v[-1] > THROTTLE_MAX_WINDOW]:
+            del _login_attempts[k]
     hits = [t for t in _login_attempts.get(key, []) if now - t < window]
     if len(hits) >= limit:
         raise HTTPException(429, "Zu viele Versuche, bitte später erneut probieren.")
-    hits.append(now)
+    if count:
+        hits.append(now)
     _login_attempts[key] = hits
+
+
+def note_attempt(key: str):
+    _login_attempts.setdefault(key, []).append(time.time())
 
 
 def current_user(request: Request) -> sqlite3.Row:
@@ -381,7 +440,7 @@ def current_user(request: Request) -> sqlite3.Row:
     with db() as conn:
         row = conn.execute(
             "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires > ?",
-            (token, int(time.time())),
+            (session_hash(token), int(time.time())),
         ).fetchone()
     if not row:
         raise HTTPException(401, "Sitzung abgelaufen")
@@ -393,7 +452,7 @@ def start_session(response: Response, user_id: int):
     with db() as conn:
         conn.execute(
             "INSERT INTO sessions (token, user_id, expires) VALUES (?, ?, ?)",
-            (token, user_id, int(time.time()) + SESSION_DAYS * 86400),
+            (session_hash(token), user_id, int(time.time()) + SESSION_DAYS * 86400),
         )
     response.set_cookie(
         "session", token, max_age=SESSION_DAYS * 86400, httponly=True, samesite="lax", secure=COOKIE_SECURE
@@ -464,7 +523,7 @@ def registration_full() -> bool:
 
 def registration_open() -> bool:
     """Registrierung: per Konfiguration erlaubt, im Admin-Dashboard nicht gesperrt, Mailversand eingerichtet, Platz frei."""
-    return (ALLOW_REGISTRATION and get_setting("registration_open", "1") == "1" and mailer.configured()
+    return (ALLOW_REGISTRATION and get_setting("registration_open", "1") == "1" and mail_ready()
             and not registration_full())
 
 
@@ -475,7 +534,7 @@ def is_admin(u: sqlite3.Row) -> bool:
 @app.get("/api/config")
 def config():
     return {"allow_registration": registration_open(), "registration_full": registration_full(),
-            "version": APP_VERSION, "mail_enabled": mailer.configured(),
+            "version": APP_VERSION, "mail_enabled": mail_ready(),
             "donate_wero": DONATE_WERO_URL, "source_url": SOURCE_URL,
             # eigene APK im Datenordner, sonst die offizielle (fragt beim ersten Start nach dem Server)
             "android_apk_url": "/download/bissfest.apk" if APK_PATH.exists() else OFFICIAL_APK_URL,
@@ -493,8 +552,15 @@ def cleanup_unverified(conn: sqlite3.Connection):
     conn.execute("DELETE FROM email_tokens WHERE expires < ?", (int(time.time()),))
 
 
+def mail_ready() -> bool:
+    """Mails mit Links nur mit fester PUBLIC_URL, nie aus dem Host-Header der Anfrage."""
+    return mailer.configured() and bool(PUBLIC_URL)
+
+
 def public_base(request: Request) -> str:
-    return PUBLIC_URL or str(request.base_url).rstrip("/")
+    if not PUBLIC_URL:
+        raise HTTPException(503, "PUBLIC_URL ist nicht gesetzt")
+    return PUBLIC_URL
 
 
 def send_verification(request: Request, user_id: int, username: str, email: str):
@@ -528,11 +594,16 @@ def send_verification(request: Request, user_id: int, username: str, email: str)
 def register(creds: RegisterIn, request: Request):
     if not ALLOW_REGISTRATION or get_setting("registration_open", "1") != "1":
         raise HTTPException(403, "Registrierung ist deaktiviert")
-    if not mailer.configured():
+    if not mail_ready():
         raise HTTPException(503, "Registrierung ist gerade nicht möglich: Der E-Mail-Versand ist noch nicht eingerichtet.")
     throttle("reg:" + (request.client.host if request.client else "?"), limit=5, window=3600)
     if not re.fullmatch(r"[A-Za-z0-9_.\-]+", creds.username):
         raise HTTPException(400, "Benutzername: nur Buchstaben, Zahlen, _ . -")
+    if creds.username.lower() in ADMIN_USERS:
+        # Admin-Rechte hängen am Namen: Ein freier Admin-Name (noch nicht registriert, gelöscht) wäre sonst übernehmbar
+        logging.getLogger("auth").warning("Registrierung mit Admin-Namen %s abgelehnt. Erst registrieren, "
+                                          "dann in ADMIN_USERS eintragen.", creds.username)
+        raise HTTPException(409, "Benutzername ist bereits vergeben")
     email = creds.email.strip().lower()
     salt = secrets.token_hex(16)
     with db() as conn:
@@ -545,8 +616,8 @@ def register(creds: RegisterIn, request: Request):
         if conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
             raise HTTPException(409, "Für diese E-Mail-Adresse gibt es schon ein Konto")
         user_id = conn.execute(
-            "INSERT INTO users (username, pw_hash, salt, created, email, email_verified) VALUES (?, ?, ?, ?, ?, 0)",
-            (creds.username, hash_pw(creds.password, salt), salt, int(time.time()), email),
+            "INSERT INTO users (username, pw_hash, salt, pw_iterations, created, email, email_verified) VALUES (?, ?, ?, ?, ?, ?, 0)",
+            (creds.username, hash_pw(creds.password, salt), salt, PW_ITERATIONS, int(time.time()), email),
         ).lastrowid
     try:
         send_verification(request, user_id, creds.username, email)
@@ -564,7 +635,7 @@ def resend_verification(creds: Credentials, request: Request):
     throttle("resend:" + creds.username.lower(), limit=3, window=3600)
     with db() as conn:
         u = conn.execute("SELECT * FROM users WHERE username = ?", (creds.username,)).fetchone()
-    if not u or not hmac.compare_digest(u["pw_hash"], hash_pw(creds.password, u["salt"])):
+    if not u or not hmac.compare_digest(u["pw_hash"], hash_pw(creds.password, u["salt"], pw_iter(u))):
         raise HTTPException(401, "Benutzername oder Passwort falsch")
     if u["email_verified"]:
         return {"ok": True, "already": True}
@@ -587,7 +658,7 @@ def correct_email(c: EmailCorrection, request: Request):
     throttle("fixmail:" + c.username.lower(), limit=5, window=3600)
     with db() as conn:
         u = conn.execute("SELECT * FROM users WHERE username = ?", (c.username,)).fetchone()
-    if not u or not hmac.compare_digest(u["pw_hash"], hash_pw(c.password, u["salt"])):
+    if not u or not hmac.compare_digest(u["pw_hash"], hash_pw(c.password, u["salt"], pw_iter(u))):
         raise HTTPException(401, "Benutzername oder Passwort falsch")
     if u["email_verified"]:
         raise HTTPException(400, "Dieses Konto ist bereits bestätigt")
@@ -623,11 +694,20 @@ def verify_email(token: str = ""):
 
 @app.post("/api/login")
 def login(creds: Credentials, request: Request, response: Response):
-    throttle("login:" + (request.client.host if request.client else "?") + ":" + creds.username.lower())
+    name = creds.username.lower()
+    throttle("login:" + (request.client.host if request.client else "?") + ":" + name)
+    # Zusätzlich je Konto, unabhängig von der IP: Fehlversuche aus vielen Netzen bremsen
+    throttle("login-fail:" + name, limit=30, window=900, count=False)
     with db() as conn:
         u = conn.execute("SELECT * FROM users WHERE username = ?", (creds.username,)).fetchone()
-    if not u or not hmac.compare_digest(u["pw_hash"], hash_pw(creds.password, u["salt"])):
+    if not u or not hmac.compare_digest(u["pw_hash"], hash_pw(creds.password, u["salt"], pw_iter(u))):
+        note_attempt("login-fail:" + name)
         raise HTTPException(401, "Benutzername oder Passwort falsch")
+    if pw_iter(u) < PW_ITERATIONS:
+        salt = secrets.token_hex(16)
+        with db() as conn:
+            conn.execute("UPDATE users SET pw_hash=?, salt=?, pw_iterations=? WHERE id=?",
+                         (hash_pw(creds.password, salt), salt, PW_ITERATIONS, u["id"]))
     if not u["email_verified"]:
         raise HTTPException(403, f"Bitte bestätige zuerst deine E-Mail-Adresse – wir haben dir einen Link an {u['email']} geschickt.")
     start_session(response, u["id"])
@@ -639,7 +719,7 @@ def logout(request: Request, response: Response):
     token = request.cookies.get("session")
     if token:
         with db() as conn:
-            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            conn.execute("DELETE FROM sessions WHERE token = ?", (session_hash(token),))
     response.delete_cookie("session")
     return {"ok": True}
 
@@ -762,7 +842,7 @@ def password_reset_request(r: ResetRequest, request: Request, tasks: BackgroundT
     ident = r.identifier.strip()
     with db() as conn:
         u = conn.execute("SELECT * FROM users WHERE username = ? OR email = ?", (ident, ident.lower())).fetchone()
-    if u and u["email"] and mailer.configured():
+    if u and u["email"] and mail_ready():
         try:
             throttle(f"pwreset-user:{u['id']}", limit=3, window=3600)
         except HTTPException:
@@ -792,8 +872,8 @@ def password_reset_confirm(c: ResetConfirm, response: Response):
     salt = secrets.token_hex(16)
     with db() as conn:
         # Wer die Mail bekommt, hat die Adresse damit auch bestätigt; alle bisherigen Anmeldungen enden
-        conn.execute("UPDATE users SET pw_hash=?, salt=?, email_verified=1 WHERE id=?",
-                     (hash_pw(c.password, salt), salt, row["user_id"]))
+        conn.execute("UPDATE users SET pw_hash=?, salt=?, pw_iterations=?, email_verified=1 WHERE id=?",
+                     (hash_pw(c.password, salt), salt, PW_ITERATIONS, row["user_id"]))
         conn.execute("DELETE FROM sessions WHERE user_id=?", (row["user_id"],))
     start_session(response, row["user_id"])
     return {"ok": True}
@@ -808,9 +888,9 @@ class EmailChange(BaseModel):
 def email_change(c: EmailChange, request: Request, u=Depends(current_user)):
     """Neue Adresse gilt erst nach Klick auf den Link, der an sie geschickt wird."""
     throttle(f"emailchange:{u['id']}", limit=5, window=3600)
-    if not hmac.compare_digest(u["pw_hash"], hash_pw(c.password, u["salt"])):
+    if not hmac.compare_digest(u["pw_hash"], hash_pw(c.password, u["salt"], pw_iter(u))):
         raise HTTPException(400, "Das Passwort ist falsch")
-    if not mailer.configured():
+    if not mail_ready():
         raise HTTPException(503, "Der E-Mail-Versand ist auf diesem Server nicht eingerichtet")
     email = c.email.strip().lower()
     if email == (u["email"] or ""):
@@ -910,12 +990,14 @@ class PasswordChange(BaseModel):
 
 @app.put("/api/password")
 def change_password(p: PasswordChange, request: Request, u=Depends(current_user)):
-    if not hmac.compare_digest(u["pw_hash"], hash_pw(p.old_password, u["salt"])):
+    if not hmac.compare_digest(u["pw_hash"], hash_pw(p.old_password, u["salt"], pw_iter(u))):
         raise HTTPException(400, "Altes Passwort ist falsch")
     salt = secrets.token_hex(16)
     with db() as conn:
-        conn.execute("UPDATE users SET pw_hash=?, salt=? WHERE id=?", (hash_pw(p.new_password, salt), salt, u["id"]))
-        conn.execute("DELETE FROM sessions WHERE user_id=? AND token != ?", (u["id"], request.cookies.get("session")))
+        conn.execute("UPDATE users SET pw_hash=?, salt=?, pw_iterations=? WHERE id=?",
+                     (hash_pw(p.new_password, salt), salt, PW_ITERATIONS, u["id"]))
+        conn.execute("DELETE FROM sessions WHERE user_id=? AND token != ?",
+                     (u["id"], session_hash(request.cookies.get("session") or "")))
     return {"ok": True}
 
 
@@ -2271,7 +2353,7 @@ def admin_system(a=Depends(admin_user)):
     return {
         "version": APP_VERSION,
         "registration": {"configured": ALLOW_REGISTRATION, "switch": get_setting("registration_open", "1") == "1",
-                         "mail": mailer.configured(), "open": registration_open(), "full": registration_full(),
+                         "mail": mail_ready(), "open": registration_open(), "full": registration_full(),
                          "max_users": max_users(), "users": user_count()},
         "mail_from": mailer.SMTP_FROM or None,
         "feedback_to": FEEDBACK_TO,
@@ -2356,10 +2438,22 @@ class PushSubscription(BaseModel):
     keys: dict[str, str]
 
 
+# Push-Abos nur bei den Diensten der Browser (Chrome/Android, Firefox, Safari/iOS, Edge). Sonst ließe sich
+# der Server über /api/push/test Anfragen an beliebige Adressen schicken, auch ins interne Netz.
+PUSH_HOSTS = ("fcm.googleapis.com", "push.services.mozilla.com", "push.apple.com", "notify.windows.com")
+
+
+def push_host_ok(endpoint: str) -> bool:
+    host = (urlparse(endpoint).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in PUSH_HOSTS)
+
+
 @app.post("/api/push/subscribe")
 def push_subscribe(sub: PushSubscription, u=Depends(current_user)):
     if not sub.keys.get("p256dh") or not sub.keys.get("auth"):
         raise HTTPException(400, "Ungültiges Push-Abo")
+    if not push_host_ok(sub.endpoint):
+        raise HTTPException(400, "Unbekannter Push-Dienst")
     with db() as conn:
         conn.execute(
             "INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, created) VALUES (?,?,?,?,?) "
