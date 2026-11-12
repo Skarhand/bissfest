@@ -378,6 +378,7 @@ function showTab(name) {
   $("#sheet-tabs").classList.toggle("hidden", SHEET_SUBPAGES.includes(name));
   if (state.templateAdd && ["templates", "template", "template-edit"].includes(name)) endTemplateAdd();
   if (name === "recent") loadRecent();
+  if (name === "favorites") renderFavorites();
   if (name === "templates") loadTemplates();
   if (name === "search") setTimeout(() => $("#search-q").focus(), 50);
 }
@@ -389,6 +390,7 @@ function openSheet(meal) {
   $("#sheet").classList.remove("hidden");
   document.body.style.overflow = "hidden";
   showTab("search");
+  loadFavorites();
 }
 
 function closeSheet() {
@@ -423,6 +425,49 @@ async function doSearch(e) {
   } catch (err) {
     $("#search-info").textContent = err.message;
   }
+}
+
+/* ------------------------------------------------------------ Favoriten (bis zu 20 Lebensmittel) */
+
+const FAVORITES_MAX = 20;
+// Gleiche Regel wie favorite_key() auf dem Server: Name + Marke
+const favoriteKey = (f) => `${f.name.trim().toLowerCase()}|${(f.brand || "").trim().toLowerCase()}`;
+const findFavorite = (f) => (state.favorites || []).find((x) => x.key === favoriteKey(f));
+
+async function loadFavorites() {
+  try { state.favorites = await api("/favorites"); } catch { state.favorites = state.favorites || []; }
+  if (state.pick) updateFavButton(state.pick);
+  if (!$("#tab-favorites").classList.contains("hidden")) renderFavorites();
+}
+
+function renderFavorites() {
+  const list = $("#favorite-results"), items = state.favorites || [];
+  list.innerHTML = "";
+  if (!items.length) list.innerHTML = `<li class="empty">Noch keine Favoriten</li>`;
+  items.forEach((f) => list.appendChild(resultItem(f)));
+  $("#favorite-info").textContent = items.length
+    ? `${items.length} von ${FAVORITES_MAX} Favoriten. Entfernen mit ★ beim Lebensmittel.`
+    : `Tippe beim Lebensmittel auf ☆, um es hier abzulegen (bis zu ${FAVORITES_MAX}).`;
+}
+
+function updateFavButton(f) {
+  const on = !!findFavorite(f), btn = $("#a-fav");
+  btn.textContent = on ? "★" : "☆";
+  btn.classList.toggle("on", on);
+  btn.setAttribute("aria-pressed", on);
+  btn.title = btn.ariaLabel = on ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen";
+}
+
+async function toggleFavorite() {
+  const f = state.pick;
+  if (!f) return;
+  const fav = findFavorite(f);
+  try {
+    state.favorites = fav ? await api(`/favorites/${fav.favorite_id}`, { method: "DELETE" })
+      : await api("/favorites", { method: "POST", body: f });
+    toast(fav ? "Aus Favoriten entfernt" : "Zu Favoriten hinzugefügt");
+  } catch (err) { toast(err.message); }
+  updateFavButton(f);
 }
 
 async function loadRecent() {
@@ -793,6 +838,7 @@ function pickFood(f, grams, isEdit = false) {
   state.pick = f;
   const seq = (state.pickSeq = (state.pickSeq || 0) + 1);
   $("#a-name").textContent = f.name;
+  updateFavButton(f);
   const macros = [f.protein_100g != null && `E ${fmt(f.protein_100g, 1)}`, f.carbs_100g != null && `KH ${fmt(f.carbs_100g, 1)}`,
     f.sugar_100g != null && `Zucker ${fmt(f.sugar_100g, 1)}`, f.fat_100g != null && `F ${fmt(f.fat_100g, 1)}`].filter(Boolean).join(" · ");
   $("#a-meta").textContent = [f.brand, `${fmt(f.kcal_100g)} kcal/100 g`, macros, f.source].filter(Boolean).join(" · ");
@@ -965,6 +1011,7 @@ function initSheet() {
   $("#sheet-close").onclick = closeSheet;
   $("#sheet").onclick = (e) => { if (e.target.id === "sheet") closeSheet(); };
   $$("#sheet-tabs button").forEach((b) => (b.onclick = () => { stopScan(); showTab(b.dataset.tab); }));
+  $("#a-fav").onclick = toggleFavorite;
   $("#search-form").onsubmit = doSearch;
   $("#barcode-form").onsubmit = (e) => { e.preventDefault(); lookupBarcode($("#barcode-q").value.trim()); };
   $("#barcode-scan").onclick = async () => {

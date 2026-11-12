@@ -540,6 +540,7 @@
     </div>
     <div class="seg" id="sheet-tabs">
       <button data-tab="search" class="active">Suche</button>
+      <button data-tab="favorites" aria-label="Favoriten">⭐</button>
       <button data-tab="recent">Zuletzt</button>
       <button data-tab="templates">Gerichte</button>
       <button data-tab="barcode">Barcode</button>
@@ -553,6 +554,10 @@
       </form>
       <p class="muted tiny" id="search-info"></p>
       <ul class="results" id="search-results"></ul>
+    </div>
+    <div class="tab hidden" id="tab-favorites">
+      <ul class="results" id="favorite-results"></ul>
+      <p class="muted tiny center" id="favorite-info"></p>
     </div>
     <div class="tab hidden" id="tab-recent">
       <ul class="results" id="recent-results"></ul>
@@ -698,6 +703,7 @@
     <!-- Menge -->
     <form class="tab form hidden" id="tab-amount">
       <div class="picked">
+        <button type="button" class="icon-btn" id="a-fav" aria-pressed="false">☆</button>
         <strong id="a-name"></strong>
         <span class="muted tiny" id="a-meta"></span>
       </div>

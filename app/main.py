@@ -65,7 +65,7 @@ SESSION_DAYS = 60
 USER_AGENT = "Bissfest/1.4 (self-hosted)"
 STATIC_DIR = Path(__file__).parent / "static"
 
-APP_VERSION = "2.17.2"
+APP_VERSION = "2.18.0"
 
 # Feste Mahlzeiten in fester Reihenfolge: bei 3 Mahlzeiten pro Tag sind es die drei Hauptmahlzeiten,
 # jede weitere ist ein Snack. Je Mahlzeit: (Name, Emoji für die Push-Nachricht, Text der Push-Nachricht)
@@ -231,6 +231,15 @@ CREATE TABLE IF NOT EXISTS user_trophies (
     key TEXT NOT NULL,
     earned INTEGER NOT NULL,
     PRIMARY KEY (user_id, key)
+);
+-- Favoriten: Momentaufnahme des Lebensmittels als JSON, eindeutig nach Name + Marke
+CREATE TABLE IF NOT EXISTS favorite_foods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    data TEXT NOT NULL,
+    created INTEGER NOT NULL,
+    UNIQUE (user_id, key)
 );
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     endpoint TEXT PRIMARY KEY,
@@ -1021,6 +1030,71 @@ def recent_foods(u=Depends(current_user)):
                FROM food_entries WHERE user_id=? GROUP BY name, brand ORDER BY last DESC LIMIT 30""",
             (u["id"],)).fetchall()
     return [dict(r) for r in rows]
+
+
+FAVORITES_MAX = 20
+
+
+class PortionHint(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    grams: float = Field(gt=0, le=5000)
+
+
+class FavoriteIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    brand: str = Field(default="", max_length=250)
+    kcal_100g: float = Field(ge=0, le=1000)
+    protein_100g: float | None = Field(default=None, ge=0, le=100)
+    carbs_100g: float | None = Field(default=None, ge=0, le=100)
+    sugar_100g: float | None = Field(default=None, ge=0, le=100)
+    fat_100g: float | None = Field(default=None, ge=0, le=100)
+    source: str = Field(default="manuell", max_length=40)
+    code: str = Field(default="", max_length=60)
+    serving_g: float | None = Field(default=None, ge=0, le=5000)
+    source_portions: list[PortionHint] = Field(default_factory=list, max_length=10)
+    custom_id: int | None = None
+
+
+def favorite_key(name: str, brand: str | None) -> str:
+    """Gleiche Regel wie favoriteKey() in app.js und wie "Zuletzt" (Name + Marke)."""
+    return f"{name.strip().lower()}|{(brand or '').strip().lower()}"
+
+
+@app.get("/api/favorites")
+def list_favorites(u=Depends(current_user)):
+    with db() as conn:
+        rows = conn.execute("SELECT id, key, data FROM favorite_foods WHERE user_id=? ORDER BY key",
+                            (u["id"],)).fetchall()
+        out = []
+        for r in rows:
+            food = json.loads(r["data"])
+            if food.get("custom_id"):
+                # Eigene Lebensmittel mit aktuellen Werten, falls sie inzwischen bearbeitet wurden
+                custom = conn.execute("SELECT * FROM custom_foods WHERE id=?", (food["custom_id"],)).fetchone()
+                food = custom_food_dict(custom, u["id"]) if custom else {**food, "custom_id": None}
+            out.append({**food, "favorite_id": r["id"], "key": r["key"]})
+    return out
+
+
+@app.post("/api/favorites")
+def add_favorite(f: FavoriteIn, u=Depends(current_user)):
+    key = favorite_key(f.name, f.brand)
+    with db() as conn:
+        exists = conn.execute("SELECT 1 FROM favorite_foods WHERE user_id=? AND key=?", (u["id"], key)).fetchone()
+        if not exists and conn.execute("SELECT COUNT(*) FROM favorite_foods WHERE user_id=?",
+                                       (u["id"],)).fetchone()[0] >= FAVORITES_MAX:
+            raise HTTPException(400, f"Höchstens {FAVORITES_MAX} Favoriten, bitte erst einen entfernen")
+        conn.execute("INSERT INTO favorite_foods (user_id, key, data, created) VALUES (?,?,?,?) "
+                     "ON CONFLICT (user_id, key) DO UPDATE SET data=excluded.data",
+                     (u["id"], key, json.dumps(f.model_dump(), ensure_ascii=False), int(time.time())))
+    return list_favorites(u)
+
+
+@app.delete("/api/favorites/{favorite_id}")
+def delete_favorite(favorite_id: int, u=Depends(current_user)):
+    with db() as conn:
+        conn.execute("DELETE FROM favorite_foods WHERE id=? AND user_id=?", (favorite_id, u["id"]))
+    return list_favorites(u)
 
 
 class WaterIn(BaseModel):

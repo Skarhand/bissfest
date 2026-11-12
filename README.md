@@ -241,6 +241,7 @@ Spendenknopf und Feedback-Adresse sind fest im Code hinterlegt. Details und frem
 
 ## Versionen
 
+- **2.18.0** – Favoriten: bis zu 20 Lebensmittel mit ☆ merken und im Reiter ⭐ schnell wieder eintragen
 - **2.17.2** – Hinweis, dass das iPhone-Widget noch nicht auf einem echten Gerät getestet ist
 - **2.17.1** – Widget für die verbleibenden Kalorien (App 2.7.1)
 - **2.17.0** – Widgets: Wasser, Kaffee und Tee für den Android-Startbildschirm (App 2.7.0), Anzeige-Widget für das iPhone über Scriptable

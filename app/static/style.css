@@ -426,3 +426,6 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 #widget-connect { display: block; color: var(--on-accent); text-align: center; text-decoration: none; }
 .widget-steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 #widget-ios-script { font-family: monospace; font-size: .75rem; }
+.picked { position: relative; padding-right: 44px; }
+#a-fav { position: absolute; top: -6px; right: -6px; font-size: 1.5rem; color: var(--muted); }
+#a-fav.on { color: #e0a100; }
